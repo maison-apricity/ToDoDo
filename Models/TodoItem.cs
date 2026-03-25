@@ -1,30 +1,42 @@
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
+﻿namespace ToDoDo.Models;
 
-namespace ToDoDo.Models;
-
-public sealed class TodoItem : INotifyPropertyChanged
+public sealed class TodoItem : ObservableObject
 {
-    private string _text = string.Empty;
-    private bool _isDone;
+    private string _id = Guid.NewGuid().ToString("N");
     private string _groupId = string.Empty;
-    private int _sortOrder;
-    private TodoPriority _priority = TodoPriority.Medium;
+    private string _text = "새 할 일";
+    private bool _isDone;
+    private TodoPriority _priority = TodoPriority.Normal;
+    private TodoRepeat _repeat = TodoRepeat.None;
     private DateTime? _dueDate;
-    private TodoRepeatPattern _repeatPattern;
-    private DateTime? _completedAt;
+    private int _sortOrder;
+    private bool _isEditing;
+    private bool _isExpanded = true;
+    private DateTime _createdAt = DateTime.Now;
+    private bool _isCompletingFeedback;
 
-    public Guid Id { get; set; } = Guid.NewGuid();
+    private string _editText = string.Empty;
+    private TodoPriority _editPriority = TodoPriority.Normal;
+    private TodoRepeat _editRepeat = TodoRepeat.None;
+    private DateTime? _editDueDate;
+    private bool _editUseDueDate;
+
+    public string Id
+    {
+        get => _id;
+        set => SetProperty(ref _id, value);
+    }
+
+    public string GroupId
+    {
+        get => _groupId;
+        set => SetProperty(ref _groupId, value);
+    }
 
     public string Text
     {
         get => _text;
-        set
-        {
-            if (_text == value) return;
-            _text = value;
-            OnPropertyChanged();
-        }
+        set => SetText(value);
     }
 
     public bool IsDone
@@ -32,32 +44,12 @@ public sealed class TodoItem : INotifyPropertyChanged
         get => _isDone;
         set
         {
-            if (_isDone == value) return;
-            _isDone = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(StatusLabel));
-        }
-    }
-
-    public string GroupId
-    {
-        get => _groupId;
-        set
-        {
-            if (_groupId == value) return;
-            _groupId = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public int SortOrder
-    {
-        get => _sortOrder;
-        set
-        {
-            if (_sortOrder == value) return;
-            _sortOrder = value;
-            OnPropertyChanged();
+            if (SetProperty(ref _isDone, value))
+            {
+                OnPropertyChanged(nameof(ShowMeta));
+                OnPropertyChanged(nameof(StatusText));
+                OnPropertyChanged(nameof(CompleteActionText));
+            }
         }
     }
 
@@ -66,10 +58,23 @@ public sealed class TodoItem : INotifyPropertyChanged
         get => _priority;
         set
         {
-            if (_priority == value) return;
-            _priority = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(PriorityLabel));
+            if (SetProperty(ref _priority, value))
+            {
+                OnPropertyChanged(nameof(PriorityText));
+            }
+        }
+    }
+
+    public TodoRepeat Repeat
+    {
+        get => _repeat;
+        set
+        {
+            if (SetProperty(ref _repeat, value))
+            {
+                OnPropertyChanged(nameof(RepeatText));
+                OnPropertyChanged(nameof(HasRepeat));
+            }
         }
     }
 
@@ -78,92 +83,174 @@ public sealed class TodoItem : INotifyPropertyChanged
         get => _dueDate;
         set
         {
-            if (_dueDate == value) return;
-            _dueDate = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(DueDateLabel));
-            OnPropertyChanged(nameof(IsOverdue));
+            if (SetProperty(ref _dueDate, value))
+            {
+                OnPropertyChanged(nameof(DueText));
+                OnPropertyChanged(nameof(HasDueDate));
+            }
         }
     }
 
-    public TodoRepeatPattern RepeatPattern
+    public int SortOrder
     {
-        get => _repeatPattern;
+        get => _sortOrder;
+        set => SetProperty(ref _sortOrder, value);
+    }
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set => SetProperty(ref _isEditing, value);
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
         set
         {
-            if (_repeatPattern == value) return;
-            _repeatPattern = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(RepeatLabel));
+            if (SetProperty(ref _isExpanded, value))
+            {
+                OnPropertyChanged(nameof(ShowMeta));
+            }
         }
     }
 
-    public DateTime? CompletedAt
+    public DateTime CreatedAt
     {
-        get => _completedAt;
+        get => _createdAt;
+        set => SetProperty(ref _createdAt, value);
+    }
+
+    public bool IsCompletingFeedback
+    {
+        get => _isCompletingFeedback;
+        set => SetProperty(ref _isCompletingFeedback, value);
+    }
+
+    public string EditText
+    {
+        get => _editText;
+        set => SetProperty(ref _editText, value);
+    }
+
+    public TodoPriority EditPriority
+    {
+        get => _editPriority;
         set
         {
-            if (_completedAt == value) return;
-            _completedAt = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(StatusLabel));
+            if (SetProperty(ref _editPriority, value))
+            {
+                OnPropertyChanged(nameof(EditPriorityText));
+            }
         }
     }
 
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
-
-    public string PriorityLabel => Priority switch
+    public TodoRepeat EditRepeat
     {
-        TodoPriority.High => "높음",
-        TodoPriority.Medium => "보통",
-        _ => "낮음"
-    };
-
-    public string DueDateLabel => DueDate switch
-    {
-        null => "마감 없음",
-        var date when date.Value.Date == DateTime.Today => "오늘",
-        var date when date.Value.Date == DateTime.Today.AddDays(1) => "내일",
-        var date => $"{date.Value:MM.dd}"
-    };
-
-    public string RepeatLabel => RepeatPattern switch
-    {
-        TodoRepeatPattern.Daily => "매일",
-        TodoRepeatPattern.Weekly => "매주",
-        TodoRepeatPattern.Monthly => "매월",
-        _ => "반복 없음"
-    };
-
-    public string StatusLabel => IsDone ? "완료" : "진행 중";
-
-    public bool IsOverdue => !IsDone && DueDate is DateTime due && due.Date < DateTime.Today;
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    public TodoItem CreateNextOccurrence()
-    {
-        var baseDate = DueDate?.Date ?? DateTime.Today;
-        var nextDate = RepeatPattern switch
+        get => _editRepeat;
+        set
         {
-            TodoRepeatPattern.Daily => baseDate.AddDays(1),
-            TodoRepeatPattern.Weekly => baseDate.AddDays(7),
-            TodoRepeatPattern.Monthly => baseDate.AddMonths(1),
-            _ => baseDate
-        };
-
-        return new TodoItem
-        {
-            Text = Text,
-            GroupId = GroupId,
-            SortOrder = SortOrder + 1,
-            Priority = Priority,
-            DueDate = nextDate,
-            RepeatPattern = RepeatPattern,
-            CreatedAt = DateTime.Now
-        };
+            if (SetProperty(ref _editRepeat, value))
+            {
+                OnPropertyChanged(nameof(EditRepeatText));
+            }
+        }
     }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    public DateTime? EditDueDate
+    {
+        get => _editDueDate;
+        set
+        {
+            if (SetProperty(ref _editDueDate, value))
+            {
+                OnPropertyChanged(nameof(EditDueText));
+            }
+        }
+    }
+
+    public bool EditUseDueDate
+    {
+        get => _editUseDueDate;
+        set
+        {
+            if (SetProperty(ref _editUseDueDate, value))
+            {
+                OnPropertyChanged(nameof(EditDueText));
+            }
+        }
+    }
+
+    public bool HasDueDate => DueDate.HasValue;
+    public bool HasRepeat => Repeat != TodoRepeat.None;
+    public bool ShowMeta => !IsDone && IsExpanded;
+    public string StatusText => IsDone ? "완료" : "진행 중";
+    public string CompleteActionText => IsDone ? "복원" : "완료";
+
+    public string DueText
+        => DueDate.HasValue ? $"마감 {DueDate.Value:yyyy.MM.dd}" : string.Empty;
+
+    public string RepeatText
+        => Repeat switch
+        {
+            TodoRepeat.Daily => "매일",
+            TodoRepeat.Weekly => "매주",
+            TodoRepeat.Monthly => "매월",
+            _ => string.Empty
+        };
+
+    public string PriorityText
+        => Priority switch
+        {
+            TodoPriority.Low => "낮음",
+            TodoPriority.High => "높음",
+            _ => "보통"
+        };
+
+    public string EditDueText => EditUseDueDate && EditDueDate.HasValue ? EditDueDate.Value.ToString("yyyy.MM.dd") : "날짜 선택";
+    public string EditRepeatText
+        => EditRepeat switch
+        {
+            TodoRepeat.Daily => "매일",
+            TodoRepeat.Weekly => "매주",
+            TodoRepeat.Monthly => "매월",
+            _ => "반복 없음"
+        };
+    public string EditPriorityText
+        => EditPriority switch
+        {
+            TodoPriority.Low => "낮음",
+            TodoPriority.High => "높음",
+            _ => "보통"
+        };
+
+    public void BeginEdit()
+    {
+        EditText = Text;
+        EditPriority = Priority;
+        EditRepeat = Repeat;
+        EditUseDueDate = DueDate.HasValue;
+        EditDueDate = DueDate ?? DateTime.Today;
+        IsEditing = true;
+    }
+
+    public void CommitEdit()
+    {
+        Text = string.IsNullOrWhiteSpace(EditText) ? Text : EditText.Trim();
+        Priority = EditPriority;
+        Repeat = EditRepeat;
+        DueDate = EditUseDueDate ? EditDueDate : null;
+        IsEditing = false;
+    }
+
+    public void CancelEdit()
+    {
+        IsEditing = false;
+    }
+
+    private bool SetText(string value)
+    {
+        var normalized = string.IsNullOrWhiteSpace(value) ? "새 할 일" : value.Trim();
+        return SetProperty(ref _text, normalized);
+    }
 }

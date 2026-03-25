@@ -1,51 +1,84 @@
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
+﻿namespace ToDoDo.Models;
 
-namespace ToDoDo.Models;
-
-public sealed class TaskGroup : INotifyPropertyChanged
+public sealed class TaskGroup : ObservableObject
 {
+    private string _id = Guid.NewGuid().ToString("N");
     private string _name = string.Empty;
     private int _sortOrder;
     private bool _isEditing;
+    private int _savedFilterMode;
+    private int _savedSortMode;
+    private bool _savedCompletedCollapsed = true;
+    private string _editName = string.Empty;
 
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Id
+    {
+        get => _id;
+        set => SetProperty(ref _id, value);
+    }
 
     public string Name
     {
         get => _name;
-        set
-        {
-            if (_name == value) return;
-            _name = value;
-            OnPropertyChanged();
-        }
+        set => SetProperty(ref _name, value?.Trim() ?? string.Empty);
     }
 
     public int SortOrder
     {
         get => _sortOrder;
-        set
-        {
-            if (_sortOrder == value) return;
-            _sortOrder = value;
-            OnPropertyChanged();
-        }
+        set => SetProperty(ref _sortOrder, value);
     }
 
     public bool IsEditing
     {
         get => _isEditing;
-        set
-        {
-            if (_isEditing == value) return;
-            _isEditing = value;
-            OnPropertyChanged();
-        }
+        set => SetProperty(ref _isEditing, value);
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
+    public int SavedFilterMode
+    {
+        get => _savedFilterMode;
+        set => SetProperty(ref _savedFilterMode, value);
+    }
 
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    public int SavedSortMode
+    {
+        get => _savedSortMode;
+        set => SetProperty(ref _savedSortMode, value);
+    }
+
+    public bool SavedCompletedCollapsed
+    {
+        get => _savedCompletedCollapsed;
+        set => SetProperty(ref _savedCompletedCollapsed, value);
+    }
+
+    public string EditName
+    {
+        get => _editName;
+        set => SetProperty(ref _editName, value ?? string.Empty);
+    }
+
+    public void BeginEdit()
+    {
+        EditName = Name;
+        IsEditing = true;
+    }
+
+    public void CommitEdit()
+    {
+        Name = string.IsNullOrWhiteSpace(EditName) ? "새 그룹" : EditName.Trim();
+        IsEditing = false;
+    }
+
+    public void CancelEdit()
+    {
+        EditName = Name;
+        if (string.IsNullOrWhiteSpace(Name))
+        {
+            Name = "새 그룹";
+        }
+        IsEditing = false;
+    }
 }
+

@@ -1,8 +1,8 @@
-namespace ToDoDo.Models;
+﻿namespace ToDoDo.Models;
 
 public enum TodoPriority
 {
-    Low = 0,
-    Medium = 1,
-    High = 2
+    Low,
+    Normal,
+    High
 }

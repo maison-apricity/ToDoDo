@@ -1,0 +1,13 @@
+// MainWindow.xaml.cs 예시
+using ToDoDo.Services;
+
+public MainWindow()
+{
+    InitializeComponent();
+
+    var windowIcon = AssetResolverService.TryLoadWindowIcon();
+    if (windowIcon != null)
+    {
+        Icon = windowIcon;
+    }
+}

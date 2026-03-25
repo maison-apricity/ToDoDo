@@ -1,0 +1,15 @@
+// App.xaml.cs 예시
+using System.Windows;
+using ToDoDo.Services;
+
+namespace ToDoDo
+{
+    public partial class App : Application
+    {
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            Resources["AppFontFamily"] = FontResolverService.ResolvePreferredFontFamily();
+            base.OnStartup(e);
+        }
+    }
+}

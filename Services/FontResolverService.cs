@@ -1,71 +1,122 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Windows.Media;
+using System.Linq;
 using MediaFontFamily = System.Windows.Media.FontFamily;
 
-namespace ToDoDo.Services;
-
-public sealed class FontResolverService
+namespace ToDoDo.Services
 {
-    private static readonly string[] FontExtensions = new[] { ".ttf", ".otf", ".ttc" };
-
-    public MediaFontFamily ResolvePreferredFontFamily()
+    public static class FontResolverService
     {
-        foreach (var directory in GetCandidateFontDirectories())
+        private static readonly string[] PreferredFamilies =
         {
-            if (!Directory.Exists(directory))
-            {
-                continue;
-            }
+            "Pretendard",
+            "Pretendard Variable",
+            "Pretendard JP",
+            "Pretendard GOV",
+        };
 
-            foreach (var fontFile in Directory.EnumerateFiles(directory, "*.*", SearchOption.AllDirectories)
-                         .Where(path => FontExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)))
+        public static MediaFontFamily ResolvePreferredFontFamily()
+        {
+            var fontsDir = FindFontsDirectory();
+            if (!string.IsNullOrWhiteSpace(fontsDir))
             {
-                var family = TryResolveFamily(fontFile);
-                if (family is not null)
+                var family = TryResolvePretendardFromDirectory(fontsDir!);
+                if (family != null)
                 {
                     return family;
                 }
             }
+
+            return new MediaFontFamily("Malgun Gothic");
         }
 
-        return new MediaFontFamily("Pretendard, Malgun Gothic, Segoe UI");
-    }
-
-    private static IEnumerable<string> GetCandidateFontDirectories()
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (current is not null)
+        private static MediaFontFamily? TryResolvePretendardFromDirectory(string fontsDir)
         {
-            var fontsDirectory = Path.Combine(current.FullName, "fonts");
-            if (seen.Add(fontsDirectory))
+            var fontFiles = new List<string>();
+
+            try
             {
-                yield return fontsDirectory;
+                fontFiles.AddRange(Directory.EnumerateFiles(fontsDir, "*.ttf", SearchOption.AllDirectories));
+                fontFiles.AddRange(Directory.EnumerateFiles(fontsDir, "*.otf", SearchOption.AllDirectories));
+            }
+            catch
+            {
+                return null;
             }
 
-            current = current.Parent;
-        }
-    }
+            if (fontFiles.Count == 0)
+            {
+                return null;
+            }
 
-    private static MediaFontFamily? TryResolveFamily(string fontFilePath)
-    {
-        try
-        {
-            var directory = Path.GetDirectoryName(fontFilePath);
-            if (string.IsNullOrWhiteSpace(directory)) return null;
+            var pretendardFiles = fontFiles
+                .Where(f => Path.GetFileName(f).Contains("Pretendard", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-            var folderUri = new Uri(directory.EndsWith(Path.DirectorySeparatorChar)
-                ? directory
-                : directory + Path.DirectorySeparatorChar);
+            if (pretendardFiles.Count == 0)
+            {
+                return null;
+            }
 
-            var families = Fonts.GetFontFamilies(folderUri);
-            var preferred = families.FirstOrDefault(family => family.Source.Contains("Pretendard", StringComparison.OrdinalIgnoreCase));
-            return preferred ?? families.FirstOrDefault();
-        }
-        catch
-        {
+            foreach (var file in pretendardFiles)
+            {
+                var dir = Path.GetDirectoryName(file);
+                if (string.IsNullOrWhiteSpace(dir))
+                {
+                    continue;
+                }
+
+                var dirUri = new Uri(dir + Path.DirectorySeparatorChar);
+                foreach (var familyName in PreferredFamilies)
+                {
+                    try
+                    {
+                        var family = new MediaFontFamily(dirUri, "./#" + familyName);
+                        _ = family.FamilyNames.Count;
+                        return family;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
             return null;
+        }
+
+        private static string? FindFontsDirectory()
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var dir in EnumerateUpwardDirs(AppContext.BaseDirectory))
+            {
+                try
+                {
+                    foreach (var candidate in Directory.EnumerateDirectories(dir, "fonts", SearchOption.TopDirectoryOnly))
+                    {
+                        if (seen.Add(candidate))
+                        {
+                            return candidate;
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> EnumerateUpwardDirs(string start)
+        {
+            var current = new DirectoryInfo(start);
+            while (current != null)
+            {
+                yield return current.FullName;
+                current = current.Parent;
+            }
         }
     }
 }
