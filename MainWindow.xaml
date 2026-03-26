@@ -141,12 +141,12 @@
         <Style x:Key="FilterButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
             <Setter Property="MinWidth" Value="86"/>
             <Setter Property="Height" Value="36"/>
-            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Padding" Value="12,0"/>
         </Style>
 
         <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
             <Setter Property="Height" Value="36"/>
-            <Setter Property="MinWidth" Value="78"/>
+            <Setter Property="MinWidth" Value="72"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="FontSize" Value="12.9"/>
             <Setter Property="Margin" Value="0"/>
@@ -484,7 +484,7 @@
                                        Margin="0,4,0,0"/>
                         </StackPanel>
 
-                        <Grid x:Name="ToolbarGrid" Grid.Row="1" Margin="0,2,0,0" HorizontalAlignment="Stretch">
+                        <Grid x:Name="ToolbarGrid" Grid.Row="1" Margin="0,2,0,0" Width="{Binding ElementName=QuickAddLauncherButton, Path=ActualWidth}" HorizontalAlignment="Left">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition x:Name="ToolbarCol0" Width="1*"/>
                                 <ColumnDefinition Width="8"/>
@@ -644,7 +644,7 @@
                         </Border>
                         </StackPanel>
 
-                        <Grid Grid.Row="4">
+                        <Grid x:Name="SelectionHostGrid" Grid.Row="4">
                             <ListBox x:Name="ActiveTodoListBox"
                                      ItemsSource="{Binding VisibleTodos}"
                                      SelectionMode="Extended"
@@ -652,6 +652,9 @@
                                      BorderThickness="0"
                                      HorizontalContentAlignment="Stretch"
                                      Foreground="{StaticResource TextPrimaryBrush}"
+                                     PreviewMouseLeftButtonDown="ActiveTodoListBox_PreviewMouseLeftButtonDown"
+                                     PreviewMouseMove="ActiveTodoListBox_PreviewMouseMove"
+                                     PreviewMouseLeftButtonUp="ActiveTodoListBox_PreviewMouseLeftButtonUp"
                                      DragOver="ActiveTodoListBox_DragOver"
                                      Drop="ActiveTodoListBox_Drop"
                                      AllowDrop="True">
@@ -781,14 +784,15 @@
                                                                         Margin="0"
                                                                         Click="CycleInlineRepeatButton_Click"/>
                                                             </Grid>
-                                                            <Grid Grid.Row="4" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                                            <Grid Grid.Row="4" Margin="0,10,0,0">
                                                                 <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="96"/>
-                                                                    <ColumnDefinition Width="14"/>
-                                                                    <ColumnDefinition Width="96"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="110"/>
+                                                                    <ColumnDefinition Width="12"/>
+                                                                    <ColumnDefinition Width="110"/>
                                                                 </Grid.ColumnDefinitions>
-                                                                <Button Grid.Column="0" Style="{StaticResource ActionButtonStyle}" Height="38" Content="취소" Margin="0" Click="CancelInlineEditButton_Click"/>
-                                                                <Button Grid.Column="2" Style="{StaticResource PrimaryActionButtonStyle}" Height="38" Content="저장" Margin="0" Click="SaveInlineEditButton_Click"/>
+                                                                <Button Grid.Column="1" Style="{StaticResource ActionButtonStyle}" Height="38" MinWidth="0" Content="취소" Margin="0" Click="CancelInlineEditButton_Click"/>
+                                                                <Button Grid.Column="3" Style="{StaticResource PrimaryActionButtonStyle}" Height="38" MinWidth="0" Content="저장" Margin="0" Click="SaveInlineEditButton_Click"/>
                                                             </Grid>
                                                         </Grid>
                                                     </Border>
@@ -866,7 +870,7 @@
                                                     </StackPanel>
                                                 </Grid>
 
-                                                <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="20" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
+                                                <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="20" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." Tag="DragHandle" PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -874,6 +878,18 @@
                             </ListBox>
 
 <Border x:Name="EmptyPlaceholderCard" Visibility="Collapsed"/>
+
+                            <Canvas x:Name="SelectionOverlayCanvas"
+                                    IsHitTestVisible="False"
+                                    Panel.ZIndex="35">
+                                <Rectangle x:Name="SelectionRubberBand"
+                                           Visibility="Collapsed"
+                                           RadiusX="10"
+                                           RadiusY="10"
+                                           Stroke="#8EA0FF"
+                                           StrokeThickness="1.2"
+                                           Fill="#2B7287FF"/>
+                            </Canvas>
                         </Grid>
                     </Grid>
                 </Border>
@@ -911,6 +927,59 @@
                 </Border>
             </Grid>
 
+
+            <Popup x:Name="InsertionPreviewPopup"
+                   Grid.RowSpan="3"
+                   Panel.ZIndex="58"
+                   PlacementTarget="{Binding ElementName=RootChrome}"
+                   Placement="RelativePoint"
+                   AllowsTransparency="True"
+                   PopupAnimation="None"
+                   StaysOpen="True"
+                   IsHitTestVisible="False">
+                <Grid x:Name="InsertionPreviewMarker"
+                      Width="240"
+                      Height="6"
+                      Opacity="0.72">
+                    <Border Height="2"
+                            VerticalAlignment="Center"
+                            CornerRadius="1"
+                            Background="#A7C9FF"/>
+                </Grid>
+            </Popup>
+
+            <Popup x:Name="DragPreviewPopup"
+                   Grid.RowSpan="3"
+                   Panel.ZIndex="60"
+                   PlacementTarget="{Binding ElementName=RootChrome}"
+                   Placement="RelativePoint"
+                   AllowsTransparency="True"
+                   PopupAnimation="None"
+                   StaysOpen="True"
+                   IsHitTestVisible="False">
+                <Border x:Name="DragPreviewCard"
+                        Width="300"
+                        Height="98"
+                        Padding="14"
+                        CornerRadius="16"
+                        Background="#EE223551"
+                        BorderBrush="#B7C6FF"
+                        BorderThickness="1.4"
+                        Opacity="0.96">
+                    <StackPanel>
+                        <TextBlock x:Name="DragPreviewTitleText"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="DragPreviewMetaText"
+                                   Margin="0,6,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12.5"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+            </Popup>
             <Border x:Name="SettingsPanel"
                     Grid.RowSpan="3"
                     Panel.ZIndex="40"
