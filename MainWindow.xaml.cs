@@ -10,6 +10,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
+using System.Windows.Data;
 using ToDoDo.Models;
 using ToDoDo.Services;
 using WpfButton = System.Windows.Controls.Button;
@@ -19,6 +21,8 @@ using WpfTextBox = System.Windows.Controls.TextBox;
 using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
 using WpfPoint = System.Windows.Point;
 using WpfSize = System.Windows.Size;
+using WpfGiveFeedbackEventArgs = System.Windows.GiveFeedbackEventArgs;
+using WpfQueryContinueDragEventArgs = System.Windows.QueryContinueDragEventArgs;
 
 namespace ToDoDo;
 
@@ -37,6 +41,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isSettingsOpen;
     private bool _isPinnedToDesktop = true;
     private bool _areCompletedDetailsCollapsed = true;
+    private bool _didApplyStartupHide;
+    private bool _allowRealClose;
+    private readonly bool _launchToTrayRequested = Environment.GetCommandLineArgs().Any(arg => string.Equals(arg, "--tray", StringComparison.OrdinalIgnoreCase));
     private bool _draftUseDueDate;
     private string _draftTitle = string.Empty;
     private DateTime? _draftDueDate = DateTime.Today;
@@ -46,6 +53,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _deleteOverlayMessage = string.Empty;
     private bool _isEmptyVisible = true;
     private bool _isInitialized;
+    private ImageSource? _headerIconSource;
+    private SettingsWindow? _settingsWindow;
+    private ArchiveWindow? _archiveWindow;
 
     private WpfPoint _dragStartPoint;
     private TodoItem? _draggedTodoItem;
@@ -56,12 +66,71 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _lastVisibleSidebarWidth = 220;
     private TodoItem? _inlineDueDateTodo;
     private const double HiddenMainMinWidth = 620;
+    private readonly DispatcherTimer _dragPreviewTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly DispatcherTimer _windowStateSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
+    private bool _isDragPreviewVisible;
+    private ListBoxItem? _lastInsertionTargetContainer;
+    private bool _lastInsertionAfter;
+    private bool _isRubberBandCandidate;
+    private bool _isRubberBandSelecting;
+    private WpfPoint _rubberBandStartPoint;
+    private bool _rubberBandStartedOnBlank;
+    private HashSet<TodoItem> _rubberBandCurrentSelection = new();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<TaskGroup> Groups { get; } = new();
     public ObservableCollection<TodoItem> AllTodos { get; } = new();
+    public ImageSource? HeaderIconSource
+    {
+        get => _headerIconSource;
+        private set
+        {
+            if (_headerIconSource == value)
+            {
+                return;
+            }
+
+            _headerIconSource = value;
+            OnPropertyChanged(nameof(HeaderIconSource));
+        }
+    }
     public ObservableCollection<TodoItem> VisibleTodos { get; } = new();
+    public ObservableCollection<TodoItem> CompletedVisibleTodos { get; } = new();
+    public ObservableCollection<TodoItem> ArchivedVisibleTodos { get; } = new();
+    public ICollectionView VisibleTodosView { get; }
+
+    public bool HasCompletedTodos => CompletedVisibleTodos.Count > 0;
+    public string CompletedCountText => CompletedVisibleTodos.Count.ToString();
+    public bool HasArchivedTodos => AllTodos.Any(t => t.IsArchived);
+    public string ArchivedCountText => AllTodos.Count(t => t.IsArchived).ToString();
+    public string ArchivedSummaryText => $"보관된 항목 {ArchivedCountText}개";
+    public string ArchiveLauncherButtonText => HasArchivedTodos ? $"보관함 ({ArchivedCountText})" : "보관함";
+    public bool ShowCompletedStrikethroughSetting
+    {
+        get => _state.Settings.ShowCompletedStrikethrough;
+        set
+        {
+            if (_state.Settings.ShowCompletedStrikethrough == value)
+            {
+                return;
+            }
+
+            _state.Settings.ShowCompletedStrikethrough = value;
+            OnPropertyChanged(nameof(ShowCompletedStrikethroughSetting));
+            OnPropertyChanged(nameof(CompletedStrikeThroughSettingText));
+            RefreshVisibleTodos();
+            SaveState();
+        }
+    }
+
+    public string AutoArchiveSettingText => $"완료 자동 보관: {AutoArchiveDaysToText(_state.Settings.AutoArchiveDays)}";
+    public string CloseBehaviorSettingText => _state.Settings.HideToTrayOnClose ? "닫기 버튼: 트레이로 숨김" : "닫기 버튼: 즉시 종료";
+    public string StartMinimizedSettingText => _state.Settings.StartMinimizedToTray ? "시작 시 트레이 최소화: 켜짐" : "시작 시 트레이 최소화: 꺼짐";
+    public string DefaultPrioritySettingText => $"기본 우선순위: {PriorityToText(_state.Settings.DefaultPriority)}";
+    public string DefaultRepeatSettingText => $"기본 반복: {RepeatToText(_state.Settings.DefaultRepeat)}";
+    public string DefaultDueDateSettingText => _state.Settings.DefaultUseDueDate ? "새 할 일 기본 기한: 사용" : "새 할 일 기본 기한: 사용 안 함";
+    public string CompletedStrikeThroughSettingText => ShowCompletedStrikethroughSetting ? "완료 취소선 표시: 켜짐" : "완료 취소선 표시: 꺼짐";
 
 
     private sealed class DeletedTodoInfo
@@ -306,6 +375,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         DataContext = this;
+        VisibleTodosView = CollectionViewSource.GetDefaultView(VisibleTodos);
         ApplyResolvedWindowIcon();
 
         _state = StorageService.Load();
@@ -333,13 +403,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Height = Math.Max(SafeFinite(_state.Settings.Height, 760), MinHeight);
         Left = SafeFinite(_state.Settings.Left, 70);
         Top = SafeFinite(_state.Settings.Top, 50);
+        EnsureWindowVisibleOnScreen();
 
         _pinService = new DesktopPinService(this);
         _trayIconService = new TrayIconService(ShowFromTray, ShowComposerFromTray, TogglePinnedFromTray, CloseFromTray, () => IsPinnedToDesktop, AssetResolverService.ResolveTrayIcon());
+        _dragPreviewTimer.Tick += DragPreviewTimer_Tick;
+        _windowStateSaveTimer.Tick += WindowStateSaveTimer_Tick;
+
+        ApplyAutoArchivePolicy();
 
         Loaded += MainWindow_Loaded;
-        LocationChanged += (_, _) => SaveState();
-        SizeChanged += (_, _) => { UpdateToolbarLayout(); UpdateMinimumWindowWidth(); SaveState(); };
+        LocationChanged += (_, _) => QueueWindowStateSave();
+        SizeChanged += (_, _) =>
+        {
+            QueueWindowStateSave();
+        };
 
         SelectedGroup = Groups.FirstOrDefault();
         UpdateSidebarLayout();
@@ -352,10 +430,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyResolvedWindowIcon()
     {
+        var headerSource = AssetResolverService.ResolveHeaderImage();
+        if (headerSource is not null)
+        {
+            HeaderIconSource = headerSource;
+        }
+
         var iconSource = AssetResolverService.ResolveWindowIcon();
         if (iconSource is not null)
         {
             Icon = iconSource;
+            HeaderIconSource ??= iconSource;
         }
     }
 
@@ -378,11 +463,61 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public void DisposeServices() => _trayIconService.Dispose();
 
+    private void WindowStateSaveTimer_Tick(object? sender, EventArgs e)
+    {
+        _windowStateSaveTimer.Stop();
+        SaveState();
+    }
+
+    private void QueueWindowStateSave()
+    {
+        if (!_isInitialized)
+        {
+            return;
+        }
+
+        _windowStateSaveTimer.Stop();
+        _windowStateSaveTimer.Start();
+    }
+
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         UpdatePinState();
         UpdateToolbarLayout();
         UpdateMinimumWindowWidth();
+
+        EnsureWindowVisibleOnScreen();
+
+        if (_state.Settings.StartMinimizedToTray && _launchToTrayRequested && !_didApplyStartupHide)
+        {
+            _didApplyStartupHide = true;
+            Dispatcher.BeginInvoke(HideToTray, DispatcherPriority.Background);
+        }
+    }
+
+    private void EnsureWindowVisibleOnScreen()
+    {
+        var primaryArea = System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea ?? new System.Drawing.Rectangle(0, 0, 1600, 900);
+        var width = Math.Min(Math.Max(Width, MinWidth), Math.Max(640, primaryArea.Width - 40));
+        var height = Math.Min(Math.Max(Height, MinHeight), Math.Max(520, primaryArea.Height - 40));
+        Width = width;
+        Height = height;
+
+        var windowRect = new System.Drawing.Rectangle((int)Math.Round(Left), (int)Math.Round(Top), (int)Math.Round(width), (int)Math.Round(height));
+        var isVisibleOnAnyScreen = System.Windows.Forms.Screen.AllScreens
+            .Select(screen => screen.WorkingArea)
+            .Any(area => windowRect.Right > area.Left + 80 &&
+                         windowRect.Left < area.Right - 80 &&
+                         windowRect.Bottom > area.Top + 80 &&
+                         windowRect.Top < area.Bottom - 80);
+
+        if (isVisibleOnAnyScreen)
+        {
+            return;
+        }
+
+        Left = primaryArea.Left + Math.Max(20, (primaryArea.Width - width) / 2.0);
+        Top = primaryArea.Top + Math.Max(20, (primaryArea.Height - height) / 4.0);
     }
 
     private void Window_SourceInitialized(object? sender, EventArgs e)
@@ -442,8 +577,53 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        IsSettingsOpen = !IsSettingsOpen;
+        OpenSettingsWindow();
     }
+
+    public void OpenSettingsWindow()
+    {
+        if (_settingsWindow is not null)
+        {
+            if (!_settingsWindow.IsVisible)
+            {
+                _settingsWindow.Show();
+            }
+
+            _settingsWindow.Activate();
+            return;
+        }
+
+        _settingsWindow = new SettingsWindow(this)
+        {
+            Owner = this
+        };
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    public void OpenArchiveWindow()
+    {
+        if (_archiveWindow is not null)
+        {
+            if (!_archiveWindow.IsVisible)
+            {
+                _archiveWindow.Show();
+            }
+
+            _archiveWindow.Activate();
+            return;
+        }
+
+        _archiveWindow = new ArchiveWindow(this)
+        {
+            Owner = this
+        };
+        _archiveWindow.Closed += (_, _) => _archiveWindow = null;
+        _archiveWindow.Show();
+        _archiveWindow.Activate();
+    }
+
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -455,40 +635,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 CancelRenameGroup(editingGroup);
             }
         }
-
-        if (!IsSettingsOpen)
-        {
-            return;
-        }
-
-        if (e.OriginalSource is not DependencyObject settingsSource)
-        {
-            IsSettingsOpen = false;
-            return;
-        }
-
-        if (IsVisualDescendantOf(settingsSource, SettingsPanel) || IsVisualDescendantOf(settingsSource, SettingsToggleButton))
-        {
-            return;
-        }
-
-        if (DueDatePopup.IsOpen && IsVisualDescendantOf(settingsSource, DueDateButton))
-        {
-            return;
-        }
-
-        IsSettingsOpen = false;
     }
 
-    private void PinButton_Click(object sender, RoutedEventArgs e)
+    public void TogglePinState()
     {
         IsPinnedToDesktop = !IsPinnedToDesktop;
     }
 
-    private void PinnedToggleButton_Click(object sender, RoutedEventArgs e)
+    private void PinButton_Click(object sender, RoutedEventArgs e)
     {
-        UpdatePinState();
+        TogglePinState();
     }
+
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
     {
@@ -497,6 +655,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_state.Settings.HideToTrayOnClose)
+        {
+            HideToTray();
+            return;
+        }
+
+        _allowRealClose = true;
         Close();
     }
 
@@ -515,6 +680,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             HeaderPinButton.BorderThickness = IsPinnedToDesktop ? new Thickness(2.4) : new Thickness(1);
             HeaderPinButton.Background = IsPinnedToDesktop ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3A568F")!) : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#263246")!);
             HeaderPinButton.ToolTip = IsPinnedToDesktop ? "바탕화면 고정 중" : "바탕화면에 고정";
+        }
+
+        if (HeaderPinIconRotate is not null)
+        {
+            HeaderPinIconRotate.Angle = IsPinnedToDesktop ? -18 : 0;
         }
 
         if (SettingsPinButton is not null)
@@ -563,8 +733,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var btn = buttons[i];
             if (btn is null) continue;
             btn.Measure(new WpfSize(double.PositiveInfinity, double.PositiveInfinity));
-            widths[i] = Math.Max(btn.DesiredSize.Width, btn.ActualWidth > 0 ? btn.ActualWidth : 0);
-            if (widths[i] < 78) widths[i] = 78;
+            widths[i] = Math.Max(btn.DesiredSize.Width, 78);
         }
 
         var sum = widths.Sum();
@@ -583,7 +752,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (btn is null) continue;
             btn.Measure(new WpfSize(double.PositiveInfinity, double.PositiveInfinity));
-            toolbarRequired += Math.Max(btn.ActualWidth, btn.DesiredSize.Width);
+            toolbarRequired += Math.Max(btn.DesiredSize.Width, 78);
         }
         toolbarRequired += 24;
 
@@ -591,7 +760,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (QuickAddLauncherButton is not null)
         {
             QuickAddLauncherButton.Measure(new WpfSize(double.PositiveInfinity, double.PositiveInfinity));
-            quickAddRequired = Math.Max(QuickAddLauncherButton.ActualWidth, QuickAddLauncherButton.DesiredSize.Width);
+            quickAddRequired = QuickAddLauncherButton.DesiredSize.Width;
         }
 
         var computedMain = Math.Max(HiddenMainMinWidth, Math.Max(toolbarRequired, quickAddRequired) + 28);
@@ -604,6 +773,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _state.Settings.SidebarWidth = Math.Clamp(SidebarColumn.ActualWidth, 180, 360);
         _lastVisibleSidebarWidth = _state.Settings.SidebarWidth;
         SaveState();
+    }
+
+    private void OpenArchiveWindowButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenArchiveWindow();
     }
 
     private void AddGroupButton_Click(object sender, RoutedEventArgs e)
@@ -645,7 +819,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        DeleteOverlayMessage = $"\"{SelectedGroup.Name}\" 그룹을 삭제할까요? 해당 그룹의 할 일도 함께 제거됩니다.";
+        DeleteOverlayMessage = $"\"{SelectedGroup.Name}\" 그룹을 삭제할까요? 진행 중/완료 항목은 삭제되고, 이미 보관된 항목은 보관함에 유지됩니다.";
         IsDeleteOverlayVisible = true;
     }
 
@@ -658,7 +832,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var groupToDelete = SelectedGroup;
-        foreach (var todo in AllTodos.Where(t => t.GroupId == groupToDelete.Id).ToList())
+        foreach (var archived in AllTodos.Where(t => t.GroupId == groupToDelete.Id && t.IsArchived))
+        {
+            archived.ArchivedGroupName = string.IsNullOrWhiteSpace(archived.ArchivedGroupName) ? groupToDelete.Name : archived.ArchivedGroupName;
+        }
+
+        foreach (var todo in AllTodos.Where(t => t.GroupId == groupToDelete.Id && !t.IsArchived).ToList())
         {
             AllTodos.Remove(todo);
         }
@@ -797,7 +976,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private void ShowComposerButton_Click(object sender, RoutedEventArgs e) => ShowComposer();
-    private void PlaceholderAddTodoButton_Click(object sender, RoutedEventArgs e) => ShowComposer();
 
     private void ShowComposer()
     {
@@ -830,10 +1008,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _editingTodo = null;
         IsComposerVisible = true;
         DraftTitle = string.Empty;
-        DraftUseDueDate = false;
+        DraftUseDueDate = _state.Settings.DefaultUseDueDate;
         DraftDueDate = DateTime.Today;
-        _draftPriority = TodoPriority.Normal;
-        _draftRepeat = TodoRepeat.None;
+        _draftPriority = _state.Settings.DefaultPriority;
+        _draftRepeat = _state.Settings.DefaultRepeat;
         OnPropertyChanged(nameof(DraftPriorityText));
         OnPropertyChanged(nameof(DraftRepeatText));
         OnPropertyChanged(nameof(DraftDueDateText));
@@ -841,21 +1019,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         RefreshVisibleTodos();
     }
 
-    private void PrepareDraftForEdit(TodoItem todo)
-    {
-        _editingTodo = todo;
-        IsComposerVisible = true;
-        DraftTitle = todo.Text;
-        DraftUseDueDate = todo.DueDate.HasValue;
-        DraftDueDate = todo.DueDate ?? DateTime.Today;
-        _draftPriority = todo.Priority;
-        _draftRepeat = todo.Repeat;
-        OnPropertyChanged(nameof(DraftPriorityText));
-        OnPropertyChanged(nameof(DraftRepeatText));
-        OnPropertyChanged(nameof(DraftDueDateText));
-
-        RefreshVisibleTodos();
-    }
 
     private void FocusComposer()
     {
@@ -1068,7 +1231,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void DeleteSelectedTodos()
     {
-        var selected = ActiveTodoListBox.SelectedItems.Cast<TodoItem>().ToList();
+        var selected = ActiveTodoListBox.SelectedItems.Cast<TodoItem>()
+            .Concat(CompletedTodoListBox.SelectedItems.Cast<TodoItem>())
+            .Distinct()
+            .ToList();
         if (selected.Count == 0)
         {
             return;
@@ -1079,6 +1245,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         foreach (var todo in selected)
         {
             AllTodos.Remove(todo);
+        }
+
+        var affectedGroups = selected.Select(t => t.GroupId).Distinct().ToList();
+        foreach (var groupId in affectedGroups)
+        {
+            ApplyGroupPartitionOrder(groupId);
         }
 
         RefreshVisibleTodos();
@@ -1128,11 +1300,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         foreach (var group in Groups)
         {
-            var groupTodos = AllTodos.Where(t => t.GroupId == group.Id).OrderBy(t => t.SortOrder).ThenBy(t => t.CreatedAt).ToList();
-            for (var i = 0; i < groupTodos.Count; i++)
-            {
-                groupTodos[i].SortOrder = i;
-            }
+            ApplyGroupPartitionOrder(group.Id);
         }
     }
 
@@ -1157,21 +1325,221 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RenameTodoMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (GetDataContextFromMenu<TodoItem>(sender) is { } todo)
+        if (GetTodoFromMenuSender(sender) is { } todo)
         {
             StartInlineEdit(todo);
         }
     }
 
+    private void DuplicateTodoMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTodoFromMenuSender(sender) is not { } todo)
+        {
+            return;
+        }
+
+        var clone = new TodoItem
+        {
+            GroupId = todo.GroupId,
+            Text = $"{todo.Text} - 복제됨",
+            Priority = todo.Priority,
+            Repeat = todo.Repeat,
+            DueDate = todo.DueDate,
+            SortOrder = 0,
+            CreatedAt = DateTime.Now,
+            IsExpanded = true,
+            IsDone = false,
+            CompletedAt = null,
+            IsArchived = false
+        };
+
+        EnsureManualSortForGroup(todo.GroupId);
+        var active = GetOrderedGroupPartition(todo.GroupId, false);
+        active.Add(clone);
+        var completed = GetOrderedGroupPartition(todo.GroupId, true);
+        AllTodos.Add(clone);
+        ApplyGroupPartitionOrder(todo.GroupId, active, completed);
+        RefreshVisibleTodos();
+        SaveState();
+        StartInlineEdit(clone);
+    }
+
+    private void MoveTodoToTopMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        MoveTodoWithinPartition(GetTodoFromMenuSender(sender), true);
+    }
+
+    private void MoveTodoToBottomMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        MoveTodoWithinPartition(GetTodoFromMenuSender(sender), false);
+    }
+
+    private void MoveTodoWithinPartition(TodoItem? todo, bool toTop)
+    {
+        if (todo is null)
+        {
+            return;
+        }
+
+        EnsureManualSortForGroup(todo.GroupId);
+        var partition = GetOrderedGroupPartition(todo.GroupId, todo.IsDone);
+        if (!partition.Remove(todo))
+        {
+            return;
+        }
+
+        partition.Insert(toTop ? 0 : partition.Count, todo);
+        if (todo.IsDone)
+        {
+            ApplyGroupPartitionOrder(todo.GroupId, completedOrder: partition);
+        }
+        else
+        {
+            ApplyGroupPartitionOrder(todo.GroupId, activeOrder: partition);
+        }
+
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    private void OpenMoveTodoToGroupDialogMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTodoFromMenuSender(sender) is not { } todo)
+        {
+            return;
+        }
+
+        var dialog = new MoveTodoToGroupWindow(Groups.OrderBy(g => g.SortOrder).ToList(), todo.GroupId)
+        {
+            Owner = this,
+            Icon = Icon,
+            FontFamily = FontFamily
+        };
+
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.SelectedGroupId))
+        {
+            return;
+        }
+
+        MoveTodoToGroup(todo, dialog.SelectedGroupId);
+    }
+
+    public void MoveTodoToGroup(TodoItem todo, string groupId)
+    {
+        if (todo.GroupId == groupId || !Groups.Any(g => g.Id == groupId))
+        {
+            return;
+        }
+
+        var previousGroupId = todo.GroupId;
+        todo.GroupId = groupId;
+        todo.SortOrder = AllTodos.Where(t => t.GroupId == groupId && !t.IsArchived)
+            .Select(t => t.SortOrder)
+            .DefaultIfEmpty(-1)
+            .Max() + 1;
+        ApplyGroupPartitionOrder(previousGroupId);
+        ApplyGroupPartitionOrder(groupId);
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    private void SetTodoDueDateQuickMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item || GetTodoFromMenuSender(item) is not { } todo)
+        {
+            return;
+        }
+
+        var today = DateTime.Today;
+        todo.DueDate = (item.Tag as string) switch
+        {
+            "today" => today,
+            "tomorrow" => today.AddDays(1),
+            "thisweek" => today.AddDays(6 - (int)today.DayOfWeek),
+            _ => null
+        };
+
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    private void SetTodoRepeatQuickMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item || GetTodoFromMenuSender(item) is not { } todo)
+        {
+            return;
+        }
+
+        todo.Repeat = (item.Tag as string) switch
+        {
+            "Daily" => TodoRepeat.Daily,
+            "Weekly" => TodoRepeat.Weekly,
+            "Monthly" => TodoRepeat.Monthly,
+            _ => TodoRepeat.None
+        };
+
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    private void MarkTodoDoneMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTodoFromMenuSender(sender) is not { } todo)
+        {
+            return;
+        }
+
+        SetTodoCompletionState(todo, true, createRepeatClone: true);
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    private void RestoreTodoMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTodoFromMenuSender(sender) is not { } todo)
+        {
+            return;
+        }
+
+        SetTodoCompletionState(todo, false, createRepeatClone: false);
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    private void ArchiveTodoMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetTodoFromMenuSender(sender) is not { } todo)
+        {
+            return;
+        }
+
+        ArchiveTodos(new[] { todo });
+    }
+
     private void DeleteTodoMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (GetDataContextFromMenu<TodoItem>(sender) is { } todo)
+        if (GetTodoFromMenuSender(sender) is { } todo)
         {
-            RememberDeletedTodos(new[] { todo });
-            AllTodos.Remove(todo);
-            RefreshVisibleTodos();
-            SaveState();
+            DeleteTodo(todo);
         }
+    }
+
+    private void DeleteTodoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetDataContext<TodoItem>(sender) is { } todo)
+        {
+            DeleteTodo(todo);
+        }
+    }
+
+    private void DeleteTodo(TodoItem todo)
+    {
+        RememberDeletedTodos(new[] { todo });
+        var groupId = todo.GroupId;
+        AllTodos.Remove(todo);
+        ApplyGroupPartitionOrder(groupId);
+        RefreshVisibleTodos();
+        SaveState();
     }
 
     private void StartInlineEdit(TodoItem todo)
@@ -1183,51 +1551,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         todo.BeginEdit();
         todo.IsExpanded = true;
-        ActiveTodoListBox.SelectedItem = todo;
-    }
 
-    private void TodoRenameTextBox_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (sender is WpfTextBox textBox && textBox.DataContext is TodoItem todo && todo.IsEditing)
+        var ownerListBox = GetTodoListBoxForItem(todo);
+        if (ownerListBox is not null)
         {
-            FocusRenameTextBox(textBox);
-        }
-    }
-
-    private void TodoRenameTextBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (sender is WpfTextBox textBox && textBox.IsVisible)
-        {
-            FocusRenameTextBox(textBox);
+            ownerListBox.SelectedItem = todo;
+            ownerListBox.ScrollIntoView(todo);
         }
     }
 
-    private void TodoRenameTextBox_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (sender is WpfTextBox textBox && textBox.DataContext is TodoItem todo)
-        {
-            SaveInlineEdit(todo);
-        }
-    }
-
-    private void TodoRenameTextBox_KeyDown(object sender, WpfKeyEventArgs e)
-    {
-        if (sender is not WpfTextBox textBox || textBox.DataContext is not TodoItem todo)
-        {
-            return;
-        }
-
-        if (e.Key == Key.Enter)
-        {
-            SaveInlineEdit(todo);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            todo.CancelEdit();
-            e.Handled = true;
-        }
-    }
 
     private void SaveInlineEdit(TodoItem todo)
     {
@@ -1336,12 +1668,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DueDatePopup.IsOpen = true;
     }
 
-    private void EndRenameTodo(TodoItem todo, string text)
-    {
-        todo.Text = string.IsNullOrWhiteSpace(text) ? "새 할 일" : text.Trim();
-        todo.CancelEdit();
-        SaveState();
-    }
 
     private async void CompleteTodoButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1355,17 +1681,44 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             todo.IsCompletingFeedback = true;
             await Task.Delay(180);
             todo.IsCompletingFeedback = false;
-            todo.IsDone = true;
-            todo.IsExpanded = false;
+            SetTodoCompletionState(todo, true, createRepeatClone: true);
         }
         else
         {
-            todo.IsDone = false;
-            todo.IsExpanded = true;
+            SetTodoCompletionState(todo, false, createRepeatClone: false);
         }
 
         RefreshVisibleTodos();
         SaveState();
+    }
+
+    private void SetTodoCompletionState(TodoItem todo, bool isDone, bool createRepeatClone)
+    {
+        if (todo.IsDone == isDone && !todo.IsArchived)
+        {
+            return;
+        }
+
+        if (isDone)
+        {
+            todo.IsDone = true;
+            todo.IsArchived = false;
+            todo.IsExpanded = false;
+            todo.CompletedAt = DateTime.Now;
+            if (createRepeatClone)
+            {
+                HandleRepeatOnCompletion(todo);
+            }
+        }
+        else
+        {
+            todo.IsDone = false;
+            todo.IsArchived = false;
+            todo.IsExpanded = true;
+            todo.CompletedAt = null;
+        }
+
+        ApplyGroupPartitionOrder(todo.GroupId);
     }
 
     private void HandleRepeatOnCompletion(TodoItem sourceTodo)
@@ -1397,14 +1750,246 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
 
         AllTodos.Add(clone);
-        sourceTodo.Repeat = TodoRepeat.None;
+        ApplyGroupPartitionOrder(sourceTodo.GroupId);
     }
 
 
-    private void ActiveTodoListBox_DragOver(object sender, WpfDragEventArgs e)
+    private void SelectionHostGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)))
+        if (_draggedTodoItem is not null)
         {
+            return;
+        }
+
+        var startPoint = e.GetPosition(SelectionHostGrid);
+        var source = ResolveRubberBandSource(startPoint, e.OriginalSource as DependencyObject);
+        if (!CanStartRubberBandSelection(source))
+        {
+            return;
+        }
+
+        _isRubberBandCandidate = true;
+        _isRubberBandSelecting = false;
+        _rubberBandStartPoint = startPoint;
+        _rubberBandStartedOnBlank = FindTodoContainerAtPoint(startPoint) is null;
+        _rubberBandCurrentSelection.Clear();
+    }
+
+    private void SelectionHostGrid_PreviewMouseMove(object sender, WpfMouseEventArgs e)
+    {
+        if (!_isRubberBandCandidate || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var currentPoint = e.GetPosition(SelectionHostGrid);
+        if (!_isRubberBandSelecting)
+        {
+            if (Math.Abs(currentPoint.X - _rubberBandStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(currentPoint.Y - _rubberBandStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            _isRubberBandSelecting = true;
+            foreach (var selected in ActiveTodoListBox.SelectedItems.Cast<TodoItem>().ToList())
+            {
+                if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem selectedContainer)
+                {
+                    selectedContainer.IsSelected = false;
+                }
+            }
+            _rubberBandCurrentSelection.Clear();
+            Mouse.Capture(SelectionHostGrid, CaptureMode.Element);
+        }
+
+        UpdateRubberBandVisual(currentPoint);
+        UpdateRubberBandSelection(currentPoint);
+        e.Handled = true;
+    }
+
+    private void SelectionHostGrid_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isRubberBandSelecting)
+        {
+            EndRubberBandSelection();
+            e.Handled = true;
+            return;
+        }
+
+        if (_isRubberBandCandidate && _rubberBandStartedOnBlank)
+        {
+            ActiveTodoListBox.SelectedItems.Clear();
+        }
+
+        _isRubberBandCandidate = false;
+        _rubberBandStartedOnBlank = false;
+    }
+
+    private DependencyObject? ResolveRubberBandSource(WpfPoint point, DependencyObject? originalSource)
+    {
+        var hit = SelectionHostGrid.InputHitTest(point) as DependencyObject;
+        return hit ?? originalSource;
+    }
+
+    private ListBoxItem? FindTodoContainerAtPoint(WpfPoint point)
+    {
+        var hit = SelectionHostGrid.InputHitTest(point) as DependencyObject;
+        while (hit is not null)
+        {
+            if (hit is ListBoxItem item)
+            {
+                return item;
+            }
+            hit = VisualTreeHelper.GetParent(hit);
+        }
+
+        foreach (var todo in VisibleTodos)
+        {
+            if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(todo) is not ListBoxItem container)
+            {
+                continue;
+            }
+            try
+            {
+                var topLeft = container.TransformToAncestor(SelectionHostGrid).Transform(new WpfPoint(0,0));
+                var rect = new Rect(topLeft, new WpfSize(container.ActualWidth, container.ActualHeight));
+                if (rect.Contains(point)) return container;
+            }
+            catch { }
+        }
+        return null;
+    }
+
+    private bool CanStartRubberBandSelection(DependencyObject? source)
+    {
+        if (source is null)
+        {
+            return false;
+        }
+
+        var current = source;
+        while (current is not null)
+        {
+            if (current is FrameworkElement fe && fe.Tag is string tag && tag == "DragHandle")
+            {
+                return false;
+            }
+
+            if (current is Button || current is TextBox || current is ToggleButton || current is Calendar || current is System.Windows.Controls.Primitives.ScrollBar || current is System.Windows.Controls.Primitives.Thumb)
+            {
+                return false;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return true;
+    }
+
+    private void UpdateRubberBandVisual(WpfPoint currentPoint)
+    {
+        var left = Math.Min(_rubberBandStartPoint.X, currentPoint.X);
+        var top = Math.Min(_rubberBandStartPoint.Y, currentPoint.Y);
+        var width = Math.Abs(currentPoint.X - _rubberBandStartPoint.X);
+        var height = Math.Abs(currentPoint.Y - _rubberBandStartPoint.Y);
+
+        Canvas.SetLeft(SelectionRubberBand, left);
+        Canvas.SetTop(SelectionRubberBand, top);
+        SelectionRubberBand.Width = width;
+        SelectionRubberBand.Height = height;
+        SelectionRubberBand.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateRubberBandSelection(WpfPoint currentPoint)
+    {
+        var left = Math.Min(_rubberBandStartPoint.X, currentPoint.X);
+        var top = Math.Min(_rubberBandStartPoint.Y, currentPoint.Y);
+        var width = Math.Abs(currentPoint.X - _rubberBandStartPoint.X);
+        var height = Math.Abs(currentPoint.Y - _rubberBandStartPoint.Y);
+        var selectionRect = new Rect(left, top, width, height);
+
+        var nextSelection = new HashSet<TodoItem>();
+
+        foreach (var todo in VisibleTodos)
+        {
+            if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(todo) is not ListBoxItem container)
+            {
+                continue;
+            }
+
+            var topLeft = container.TransformToAncestor(SelectionHostGrid).Transform(new WpfPoint(0, 0));
+            var itemRect = new Rect(topLeft, new WpfSize(container.ActualWidth, container.ActualHeight));
+
+            if (selectionRect.IntersectsWith(itemRect))
+            {
+                nextSelection.Add(todo);
+            }
+        }
+
+        if (_rubberBandCurrentSelection.SetEquals(nextSelection))
+        {
+            return;
+        }
+
+        foreach (var todo in _rubberBandCurrentSelection.Except(nextSelection).ToList())
+        {
+            if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(todo) is ListBoxItem container)
+            {
+                container.IsSelected = false;
+            }
+        }
+
+        foreach (var todo in nextSelection.Except(_rubberBandCurrentSelection).ToList())
+        {
+            if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(todo) is ListBoxItem container)
+            {
+                container.IsSelected = true;
+            }
+        }
+
+        _rubberBandCurrentSelection = nextSelection;
+    }
+
+    private void EndRubberBandSelection()
+    {
+        _isRubberBandCandidate = false;
+        _isRubberBandSelecting = false;
+        _rubberBandStartedOnBlank = false;
+        _rubberBandCurrentSelection.Clear();
+        SelectionRubberBand.Visibility = Visibility.Collapsed;
+        SelectionRubberBand.Width = 0;
+        SelectionRubberBand.Height = 0;
+        Mouse.Capture(null);
+    }
+
+    private ListBox? GetTodoListBoxForItem(TodoItem todo)
+        => todo.IsDone ? CompletedTodoListBox : ActiveTodoListBox;
+
+    private bool CanDropTodoOnListBox(TodoItem todo, ListBox targetListBox)
+    {
+        if (!ReferenceEquals(targetListBox, ActiveTodoListBox) && !ReferenceEquals(targetListBox, CompletedTodoListBox))
+        {
+            return false;
+        }
+
+        return todo.IsDone == ReferenceEquals(targetListBox, CompletedTodoListBox);
+    }
+
+    private void TodoListBox_DragOver(object sender, WpfDragEventArgs e)
+    {
+        if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
+        {
+            ClearInsertionFeedback();
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        var source = e.Data.GetData(typeof(TodoItem)) as TodoItem;
+        if (source is null || !CanDropTodoOnListBox(source, listBox))
+        {
+            ClearInsertionFeedback();
             e.Effects = DragDropEffects.None;
             e.Handled = true;
             return;
@@ -1412,34 +1997,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         e.Effects = DragDropEffects.Move;
         e.Handled = true;
-
-        if (_draggedTodoItem is not null)
-        {
-        }
+        UpdateDropInsertionFeedback(listBox, e.GetPosition(listBox), e.OriginalSource as DependencyObject);
+        UpdateDragPreviewPosition();
     }
 
-    private void ActiveTodoListBox_Drop(object sender, WpfDragEventArgs e)
+    private void TodoListBox_Drop(object sender, WpfDragEventArgs e)
     {
         try
         {
-            if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)))
+            if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
             {
                 return;
             }
 
             var source = e.Data.GetData(typeof(TodoItem)) as TodoItem;
-            if (source is null)
+            if (source is null || !CanDropTodoOnListBox(source, listBox))
             {
                 return;
             }
 
-            var groupItems = AllTodos.Where(t => t.GroupId == source.GroupId).OrderBy(t => t.SortOrder).ToList();
+            var groupItems = GetOrderedGroupPartition(source.GroupId, source.IsDone);
             if (groupItems.Count == 0)
             {
                 return;
             }
 
-            var targetItem = GetItemFromPoint<TodoItem>(e.GetPosition(ActiveTodoListBox));
+            var targetContainer = GetAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+            var targetItem = targetContainer?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(e.GetPosition(listBox), listBox);
+            if (targetItem is not null && targetItem.IsDone != source.IsDone)
+            {
+                targetItem = null;
+                targetContainer = null;
+            }
+
             groupItems.Remove(source);
 
             var insertIndex = groupItems.Count;
@@ -1452,7 +2042,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
                 else
                 {
-                    var container = ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem;
+                    var container = targetContainer ?? (listBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem);
                     if (container is not null)
                     {
                         var position = e.GetPosition(container);
@@ -1470,18 +2060,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             groupItems.Insert(insertIndex, source);
-            for (var i = 0; i < groupItems.Count; i++)
+            if (source.IsDone)
             {
-                groupItems[i].SortOrder = i;
+                ApplyGroupPartitionOrder(source.GroupId, completedOrder: groupItems);
+            }
+            else
+            {
+                ApplyGroupPartitionOrder(source.GroupId, activeOrder: groupItems);
             }
 
             RefreshVisibleTodos();
-            ActiveTodoListBox.SelectedItem = source;
-            ActiveTodoListBox.ScrollIntoView(source);
+            listBox.SelectedItem = source;
+            listBox.ScrollIntoView(source);
             SaveState();
         }
         finally
         {
+            ClearInsertionFeedback();
+            HideDragPreview();
             _draggedTodoItem = null;
             Mouse.Capture(null);
         }
@@ -1494,13 +2090,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        _currentSortMode = SortMode.Manual;
-        UpdateActionButtonLabels();
-        PersistGroupUiState(SelectedGroup);
+        var ownerListBox = GetTodoListBoxForItem(todo);
+        if (ownerListBox is null)
+        {
+            return;
+        }
+
+        if (_currentSortMode != SortMode.Manual)
+        {
+            SnapCurrentOrderToManual(todo.GroupId);
+            _currentSortMode = SortMode.Manual;
+            PersistGroupUiState(SelectedGroup);
+            UpdateActionButtonLabels();
+            RefreshVisibleTodos();
+        }
+
         _draggedTodoItem = todo;
-        _dragStartPoint = e.GetPosition(ActiveTodoListBox);
+        _dragStartPoint = e.GetPosition(ownerListBox);
         Mouse.Capture(sender as IInputElement);
-        ActiveTodoListBox.SelectedItem = todo;
+        ownerListBox.SelectedItem = todo;
         e.Handled = true;
     }
 
@@ -1511,24 +2119,230 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var position = e.GetPosition(ActiveTodoListBox);
+        var ownerListBox = GetTodoListBoxForItem(_draggedTodoItem);
+        if (ownerListBox is null)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(ownerListBox);
         if (Math.Abs(position.X - _dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(position.Y - _dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
         {
             return;
         }
 
+        ShowDragPreview(_draggedTodoItem);
+        System.Windows.GiveFeedbackEventHandler feedbackHandler = DragPreviewGiveFeedback;
+        System.Windows.QueryContinueDragEventHandler continueHandler = DragPreviewQueryContinueDrag;
+        ownerListBox.GiveFeedback += feedbackHandler;
+        ownerListBox.QueryContinueDrag += continueHandler;
         try
         {
             var data = new System.Windows.DataObject(typeof(TodoItem), _draggedTodoItem);
-            DragDrop.DoDragDrop(sender as DependencyObject ?? ActiveTodoListBox, data, DragDropEffects.Move);
+            DragDrop.DoDragDrop(sender as DependencyObject ?? ownerListBox, data, DragDropEffects.Move);
         }
         finally
         {
+            ownerListBox.GiveFeedback -= feedbackHandler;
+            ownerListBox.QueryContinueDrag -= continueHandler;
+            HideDragPreview();
+            ClearInsertionFeedback();
             Mouse.Capture(null);
         }
     }
 
+
+    private void ShowDragPreview(TodoItem todo)
+    {
+        DragPreviewTitleText.Text = todo.Text;
+        DragPreviewMetaText.Text = $"{todo.PriorityText} · {(todo.IsDone ? "완료됨" : "진행 중")}";
+
+        var ownerListBox = GetTodoListBoxForItem(todo);
+        if (ownerListBox?.ItemContainerGenerator.ContainerFromItem(todo) is ListBoxItem container)
+        {
+            DragPreviewCard.Width = Math.Max(220, container.ActualWidth * 0.88);
+            DragPreviewCard.Height = Math.Max(86, container.ActualHeight * 0.88);
+        }
+        else
+        {
+            DragPreviewCard.Width = 300;
+            DragPreviewCard.Height = 98;
+        }
+
+        UpdateDragPreviewPosition();
+        DragPreviewPopup.IsOpen = true;
+        _isDragPreviewVisible = true;
+        if (!_dragPreviewTimer.IsEnabled)
+        {
+            _dragPreviewTimer.Start();
+        }
+    }
+
+    private void HideDragPreview()
+    {
+        _dragPreviewTimer.Stop();
+        DragPreviewPopup.IsOpen = false;
+        _isDragPreviewVisible = false;
+    }
+
+    private void DragPreviewGiveFeedback(object? sender, WpfGiveFeedbackEventArgs e)
+    {
+        if (_isDragPreviewVisible)
+        {
+            UpdateDragPreviewPosition();
+        }
+
+        e.UseDefaultCursors = true;
+        e.Handled = true;
+    }
+
+    private void DragPreviewQueryContinueDrag(object? sender, WpfQueryContinueDragEventArgs e)
+    {
+        if (_isDragPreviewVisible)
+        {
+            UpdateDragPreviewPosition();
+        }
+    }
+
+    private void DragPreviewTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_isDragPreviewVisible)
+        {
+            UpdateDragPreviewPosition();
+        }
+    }
+
+    private void UpdateDragPreviewPosition()
+    {
+        if (!TryGetCursorPosition(out var pt))
+        {
+            return;
+        }
+
+        var local = PointFromScreen(new WpfPoint(pt.X, pt.Y));
+        DragPreviewPopup.HorizontalOffset = local.X + 20;
+        DragPreviewPopup.VerticalOffset = local.Y + 20;
+    }
+
+    private void UpdateDropInsertionFeedback(ListBox listBox, WpfPoint point, DependencyObject? originalSource)
+    {
+        if (_draggedTodoItem is null)
+        {
+            ClearInsertionFeedback();
+            return;
+        }
+
+        var container = GetAncestor<ListBoxItem>(originalSource);
+        var targetItem = container?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(point, listBox);
+
+        if (targetItem is null)
+        {
+            if (TryGetLastInsertionContainer(listBox, out var lastContainer) && lastContainer is not null)
+            {
+                var lastTop = lastContainer.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0));
+                if (point.Y >= lastTop.Y + (lastContainer.ActualHeight * 0.5))
+                {
+                    _lastInsertionTargetContainer = lastContainer;
+                    _lastInsertionAfter = true;
+                    UpdateInsertionPreviewPosition(lastContainer, true);
+                    return;
+                }
+            }
+
+            ClearInsertionFeedback();
+            return;
+        }
+
+        if (targetItem == _draggedTodoItem || targetItem.GroupId != _draggedTodoItem.GroupId || targetItem.IsDone != _draggedTodoItem.IsDone)
+        {
+            ClearInsertionFeedback();
+            return;
+        }
+
+        container ??= listBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem;
+        if (container is null)
+        {
+            ClearInsertionFeedback();
+            return;
+        }
+
+        var itemPos = Mouse.GetPosition(container);
+        var after = itemPos.Y > container.ActualHeight / 2;
+
+        if (ReferenceEquals(_lastInsertionTargetContainer, container) && _lastInsertionAfter == after)
+        {
+            UpdateInsertionPreviewPosition(container, after);
+            return;
+        }
+
+        _lastInsertionTargetContainer = container;
+        _lastInsertionAfter = after;
+        UpdateInsertionPreviewPosition(container, after);
+    }
+
+    private void UpdateInsertionPreviewPosition(ListBoxItem container, bool after)
+    {
+        if (RootChrome is null)
+        {
+            return;
+        }
+
+        const double visualGapHalf = 5.0; // ListBoxItem bottom margin(10)의 중앙
+        var topLeft = container.TransformToAncestor(RootChrome).Transform(new WpfPoint(0, 0));
+        var markerWidth = Math.Max(160, container.ActualWidth - 52);
+        var markerHalfHeight = InsertionPreviewMarker.Height / 2.0;
+        var boundaryY = after ? topLeft.Y + container.ActualHeight : topLeft.Y;
+        var centerY = after ? boundaryY + visualGapHalf : boundaryY - visualGapHalf;
+
+        InsertionPreviewMarker.Width = markerWidth;
+        InsertionPreviewPopup.HorizontalOffset = topLeft.X + ((container.ActualWidth - markerWidth) / 2.0);
+        InsertionPreviewPopup.VerticalOffset = centerY - markerHalfHeight;
+        InsertionPreviewPopup.IsOpen = true;
+    }
+
+    private void ClearInsertionFeedback()
+    {
+        InsertionPreviewPopup.IsOpen = false;
+        _lastInsertionTargetContainer = null;
+    }
+
+    private bool TryGetLastInsertionContainer(ListBox listBox, out ListBoxItem? container)
+    {
+        container = null;
+
+        for (var i = listBox.Items.Count - 1; i >= 0; i--)
+        {
+            if (listBox.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem itemContainer &&
+                itemContainer.DataContext is TodoItem todo &&
+                _draggedTodoItem is not null &&
+                todo.GroupId == _draggedTodoItem.GroupId &&
+                todo.IsDone == _draggedTodoItem.IsDone)
+            {
+                container = itemContainer;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint lpPoint);
+
+    private static bool TryGetCursorPosition(out NativePoint point)
+    {
+        return GetCursorPos(out point);
+    }
 
     private static bool IsDragHandle(DependencyObject? source)
     {
@@ -1706,7 +2520,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (e.Key == Key.Delete)
         {
-            if (ActiveTodoListBox.SelectedItems.Count > 0)
+            if (ActiveTodoListBox.SelectedItems.Count > 0 || CompletedTodoListBox.SelectedItems.Count > 0)
             {
                 DeleteSelectedTodos();
                 e.Handled = true;
@@ -1746,12 +2560,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 StartInlineEdit(todo);
                 e.Handled = true;
             }
+            else if (CompletedTodoListBox.SelectedItem is TodoItem completedTodo)
+            {
+                StartInlineEdit(completedTodo);
+                e.Handled = true;
+            }
         }
     }
 
     private void CopySelectedTodos(bool cutAfterCopy)
     {
-        var selected = ActiveTodoListBox.SelectedItems.Cast<TodoItem>().ToList();
+        var selected = ActiveTodoListBox.SelectedItems.Cast<TodoItem>()
+            .Concat(CompletedTodoListBox.SelectedItems.Cast<TodoItem>())
+            .Distinct()
+            .ToList();
         if (selected.Count == 0)
         {
             return;
@@ -1806,7 +2628,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SaveState();
     }
 
-    private void ShowFromTrayButton_Click(object sender, RoutedEventArgs e) => ShowFromTray();
+
+    private void HideToTray()
+    {
+        SaveState();
+        _settingsWindow?.Hide();
+        _archiveWindow?.Hide();
+        Hide();
+    }
 
     private void ShowFromTray()
     {
@@ -1820,7 +2649,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CloseFromTray()
     {
-        Dispatcher.Invoke(Close);
+        Dispatcher.Invoke(() =>
+        {
+            _allowRealClose = true;
+            Close();
+        });
     }
 
     private void TogglePinnedFromTray()
@@ -1828,7 +2661,186 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Dispatcher.Invoke(() => IsPinnedToDesktop = !IsPinnedToDesktop);
     }
 
-    private void ExportBackupButton_Click(object sender, RoutedEventArgs e)
+    private void NotifySettingsPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(AutoArchiveSettingText));
+        OnPropertyChanged(nameof(CloseBehaviorSettingText));
+        OnPropertyChanged(nameof(StartMinimizedSettingText));
+        OnPropertyChanged(nameof(DefaultPrioritySettingText));
+        OnPropertyChanged(nameof(DefaultRepeatSettingText));
+        OnPropertyChanged(nameof(DefaultDueDateSettingText));
+        OnPropertyChanged(nameof(CompletedStrikeThroughSettingText));
+        OnPropertyChanged(nameof(ShowCompletedStrikethroughSetting));
+        OnPropertyChanged(nameof(HasArchivedTodos));
+        OnPropertyChanged(nameof(ArchivedCountText));
+        OnPropertyChanged(nameof(ArchivedSummaryText));
+        OnPropertyChanged(nameof(ArchiveLauncherButtonText));
+    }
+
+    public void ToggleCloseBehaviorSetting()
+    {
+        _state.Settings.HideToTrayOnClose = !_state.Settings.HideToTrayOnClose;
+        NotifySettingsPropertiesChanged();
+        SaveState();
+    }
+
+    public void ToggleStartMinimizedSetting()
+    {
+        _state.Settings.StartMinimizedToTray = !_state.Settings.StartMinimizedToTray;
+        NotifySettingsPropertiesChanged();
+        SaveState();
+    }
+
+    public void CycleAutoArchiveSetting()
+    {
+        _state.Settings.AutoArchiveDays = _state.Settings.AutoArchiveDays switch
+        {
+            0 => 7,
+            7 => 30,
+            _ => 0
+        };
+
+        NotifySettingsPropertiesChanged();
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    public void CycleDefaultPrioritySetting()
+    {
+        _state.Settings.DefaultPriority = _state.Settings.DefaultPriority switch
+        {
+            TodoPriority.Low => TodoPriority.Normal,
+            TodoPriority.Normal => TodoPriority.High,
+            _ => TodoPriority.Low
+        };
+        NotifySettingsPropertiesChanged();
+        SaveState();
+    }
+
+    public void CycleDefaultRepeatSetting()
+    {
+        _state.Settings.DefaultRepeat = _state.Settings.DefaultRepeat switch
+        {
+            TodoRepeat.None => TodoRepeat.Daily,
+            TodoRepeat.Daily => TodoRepeat.Weekly,
+            TodoRepeat.Weekly => TodoRepeat.Monthly,
+            _ => TodoRepeat.None
+        };
+        NotifySettingsPropertiesChanged();
+        SaveState();
+    }
+
+    public void ToggleDefaultDueDateSetting()
+    {
+        _state.Settings.DefaultUseDueDate = !_state.Settings.DefaultUseDueDate;
+        NotifySettingsPropertiesChanged();
+        SaveState();
+    }
+
+    public void ToggleCompletedStrikeThroughSetting()
+    {
+        ShowCompletedStrikethroughSetting = !ShowCompletedStrikethroughSetting;
+    }
+
+    private void ToggleCloseBehaviorSettingButton_Click(object sender, RoutedEventArgs e) => ToggleCloseBehaviorSetting();
+
+    private void ToggleStartMinimizedSettingButton_Click(object sender, RoutedEventArgs e) => ToggleStartMinimizedSetting();
+
+    private void CycleAutoArchiveSettingButton_Click(object sender, RoutedEventArgs e) => CycleAutoArchiveSetting();
+
+    private void CycleDefaultPrioritySettingButton_Click(object sender, RoutedEventArgs e) => CycleDefaultPrioritySetting();
+
+    private void CycleDefaultRepeatSettingButton_Click(object sender, RoutedEventArgs e) => CycleDefaultRepeatSetting();
+
+    private void ToggleDefaultDueDateSettingButton_Click(object sender, RoutedEventArgs e) => ToggleDefaultDueDateSetting();
+
+    private void ToggleCompletedStrikeThroughSettingButton_Click(object sender, RoutedEventArgs e) => ToggleCompletedStrikeThroughSetting();
+
+    private void RestoreAllCompletedButton_Click(object sender, RoutedEventArgs e)
+    {
+        RestoreCompletedTodos(CompletedVisibleTodos.ToList());
+    }
+
+    private void ArchiveAllCompletedButton_Click(object sender, RoutedEventArgs e)
+    {
+        ArchiveTodos(CompletedVisibleTodos.ToList());
+    }
+
+    public void RestoreSelectedArchivedTodos(IEnumerable<TodoItem> todos)
+    {
+        RestoreArchivedTodos(todos);
+    }
+
+    public void DeleteSelectedArchivedTodos(IEnumerable<TodoItem> todos)
+    {
+        DeleteArchivedTodos(todos);
+    }
+
+    public void RestoreArchivedTodos(IEnumerable<TodoItem> todos)
+    {
+        var archived = todos.Where(t => t.IsArchived).Distinct().ToList();
+        if (archived.Count == 0)
+        {
+            return;
+        }
+
+        var fallbackGroup = SelectedGroup ?? Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
+        var affectedGroups = new HashSet<string>();
+
+        foreach (var todo in archived)
+        {
+            affectedGroups.Add(todo.GroupId);
+            if (!Groups.Any(g => g.Id == todo.GroupId) && fallbackGroup is not null)
+            {
+                todo.GroupId = fallbackGroup.Id;
+                affectedGroups.Add(fallbackGroup.Id);
+            }
+
+            todo.IsArchived = false;
+            if (!todo.IsDone)
+            {
+                todo.CompletedAt = null;
+            }
+        }
+
+        foreach (var groupId in affectedGroups.Where(id => Groups.Any(g => g.Id == id)))
+        {
+            ApplyGroupPartitionOrder(groupId);
+        }
+
+        NotifySettingsPropertiesChanged();
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    public void DeleteArchivedTodos(IEnumerable<TodoItem> todos)
+    {
+        var archived = todos.Where(t => t.IsArchived).Distinct().ToList();
+        if (archived.Count == 0)
+        {
+            return;
+        }
+
+        RememberDeletedTodos(archived);
+        foreach (var todo in archived)
+        {
+            AllTodos.Remove(todo);
+        }
+
+        NotifySettingsPropertiesChanged();
+        RefreshVisibleTodos();
+        SaveState();
+    }
+
+    public void RestoreAllArchivedTodos() => RestoreArchivedTodos(AllTodos.Where(t => t.IsArchived).ToList());
+
+    public void DeleteAllArchivedTodos() => DeleteArchivedTodos(AllTodos.Where(t => t.IsArchived).ToList());
+
+    private void RestoreArchivedTodosButton_Click(object sender, RoutedEventArgs e) => RestoreAllArchivedTodos();
+
+    private void DeleteArchivedTodosButton_Click(object sender, RoutedEventArgs e) => DeleteAllArchivedTodos();
+
+    public void ExportBackup()
     {
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
@@ -1848,7 +2860,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private void ImportBackupButton_Click(object sender, RoutedEventArgs e)
+    public void ImportBackup()
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
@@ -1884,32 +2896,65 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             AllTodos.Add(todo);
         }
 
-        IsSidebarVisible = imported.Settings.IsSidebarVisible;
-        IsPinnedToDesktop = imported.Settings.IsPinnedToDesktop;
+        _state.Settings = imported.Settings ?? new AppSettings();
+        Width = Math.Max(SafeFinite(_state.Settings.Width, 900), MinWidth);
+        Height = Math.Max(SafeFinite(_state.Settings.Height, 760), MinHeight);
+        Left = SafeFinite(_state.Settings.Left, 70);
+        Top = SafeFinite(_state.Settings.Top, 50);
+        EnsureWindowVisibleOnScreen();
+        IsSidebarVisible = _state.Settings.IsSidebarVisible;
+        IsPinnedToDesktop = _state.Settings.IsPinnedToDesktop;
         SelectedGroup = Groups.FirstOrDefault();
         UpdateSidebarLayout();
         UpdateMinimumWindowWidth();
+        NotifySettingsPropertiesChanged();
         RefreshVisibleTodos();
         SaveState();
     }
 
+    private void ExportBackupButton_Click(object sender, RoutedEventArgs e) => ExportBackup();
+
+    private void ImportBackupButton_Click(object sender, RoutedEventArgs e) => ImportBackup();
+
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        if (!_allowRealClose && _state.Settings.HideToTrayOnClose)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
         SaveState();
     }
 
     private void RefreshVisibleTodos()
     {
+        var autoArchived = ApplyAutoArchivePolicy();
         VisibleTodos.Clear();
+        CompletedVisibleTodos.Clear();
+        ArchivedVisibleTodos.Clear();
+
+        foreach (var archived in AllTodos.Where(t => t.IsArchived)
+                     .OrderByDescending(t => t.CompletedAt ?? t.CreatedAt)
+                     .ThenBy(t => t.Text))
+        {
+            ArchivedVisibleTodos.Add(archived);
+        }
 
         if (SelectedGroup is null)
         {
             SummaryText = "전체 0 · 진행 0 · 완료 0";
             IsEmptyVisible = true;
+            OnPropertyChanged(nameof(HasCompletedTodos));
+            OnPropertyChanged(nameof(CompletedCountText));
+            OnPropertyChanged(nameof(HasArchivedTodos));
+            OnPropertyChanged(nameof(ArchivedCountText));
+            OnPropertyChanged(nameof(ArchivedSummaryText));
             return;
         }
 
-        var groupTodos = AllTodos.Where(t => t.GroupId == SelectedGroup.Id).ToList();
+        var groupTodos = AllTodos.Where(t => t.GroupId == SelectedGroup.Id && !t.IsArchived).ToList();
         IEnumerable<TodoItem> ordered = _currentSortMode switch
         {
             SortMode.Created => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.CreatedAt).ThenBy(t => t.SortOrder),
@@ -1921,14 +2966,161 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         foreach (var todo in ordered.Where(MatchesCurrentFilter))
         {
-            VisibleTodos.Add(todo);
+            if (todo.IsDone)
+            {
+                CompletedVisibleTodos.Add(todo);
+            }
+            else
+            {
+                VisibleTodos.Add(todo);
+            }
         }
 
         var total = groupTodos.Count;
         var completed = groupTodos.Count(t => t.IsDone);
         var remaining = total - completed;
         SummaryText = $"전체 {total} · 진행 {remaining} · 완료 {completed}";
-        IsEmptyVisible = false;
+        IsEmptyVisible = VisibleTodos.Count == 0;
+        OnPropertyChanged(nameof(HasCompletedTodos));
+        OnPropertyChanged(nameof(CompletedCountText));
+        OnPropertyChanged(nameof(HasArchivedTodos));
+        OnPropertyChanged(nameof(ArchivedCountText));
+        OnPropertyChanged(nameof(ArchivedSummaryText));
+        OnPropertyChanged(nameof(ArchiveLauncherButtonText));
+        VisibleTodosView.Refresh();
+
+        if (autoArchived && _isInitialized)
+        {
+            SaveState();
+        }
+    }
+
+    private List<TodoItem> GetGroupTodosInCurrentOrder(string groupId)
+    {
+        var groupTodos = AllTodos.Where(t => t.GroupId == groupId && !t.IsArchived).ToList();
+        IEnumerable<TodoItem> ordered = _currentSortMode switch
+        {
+            SortMode.Created => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.CreatedAt).ThenBy(t => t.SortOrder),
+            SortMode.Name => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.Text, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.CreatedAt),
+            SortMode.Priority => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => PriorityRank(t.Priority)).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.CreatedAt),
+            SortMode.Manual => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.SortOrder),
+            _ => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.CreatedAt)
+        };
+
+        return ordered.ToList();
+    }
+
+    private void SnapCurrentOrderToManual(string groupId)
+    {
+        var ordered = GetGroupTodosInCurrentOrder(groupId);
+        var active = ordered.Where(t => !t.IsDone).ToList();
+        var completed = ordered.Where(t => t.IsDone).ToList();
+        ApplyGroupPartitionOrder(groupId, active, completed);
+    }
+
+    private void EnsureManualSortForGroup(string groupId)
+    {
+        if (_currentSortMode == SortMode.Manual)
+        {
+            return;
+        }
+
+        if (SelectedGroup?.Id != groupId)
+        {
+            return;
+        }
+
+        SnapCurrentOrderToManual(groupId);
+        _currentSortMode = SortMode.Manual;
+        PersistGroupUiState(SelectedGroup);
+        UpdateActionButtonLabels();
+    }
+
+    private List<TodoItem> GetOrderedGroupPartition(string groupId, bool completed)
+        => AllTodos.Where(t => t.GroupId == groupId && !t.IsArchived && t.IsDone == completed)
+            .OrderBy(t => t.SortOrder)
+            .ThenBy(t => t.CreatedAt)
+            .ToList();
+
+    private void ApplyGroupPartitionOrder(string groupId, IReadOnlyList<TodoItem>? activeOrder = null, IReadOnlyList<TodoItem>? completedOrder = null)
+    {
+        var active = (activeOrder ?? GetOrderedGroupPartition(groupId, false)).ToList();
+        var completed = (completedOrder ?? GetOrderedGroupPartition(groupId, true)).ToList();
+        var archived = AllTodos.Where(t => t.GroupId == groupId && t.IsArchived)
+            .OrderBy(t => t.SortOrder)
+            .ThenBy(t => t.CreatedAt)
+            .ToList();
+
+        var index = 0;
+        foreach (var todo in active.Concat(completed).Concat(archived))
+        {
+            todo.SortOrder = index++;
+        }
+    }
+
+    private void ArchiveTodos(IEnumerable<TodoItem> todos)
+    {
+        var affectedGroups = new HashSet<string>();
+        foreach (var todo in todos.Where(t => t.IsDone && !t.IsArchived).Distinct())
+        {
+            todo.ArchivedGroupName = Groups.FirstOrDefault(g => g.Id == todo.GroupId)?.Name ?? todo.ArchivedGroupName;
+            todo.IsArchived = true;
+            todo.CompletedAt ??= DateTime.Now;
+            affectedGroups.Add(todo.GroupId);
+        }
+
+        foreach (var groupId in affectedGroups)
+        {
+            ApplyGroupPartitionOrder(groupId);
+        }
+
+        if (affectedGroups.Count > 0)
+        {
+            RefreshVisibleTodos();
+            SaveState();
+        }
+    }
+
+    private void RestoreCompletedTodos(IEnumerable<TodoItem> todos)
+    {
+        var affectedGroups = new HashSet<string>();
+        foreach (var todo in todos.Distinct())
+        {
+            SetTodoCompletionState(todo, false, createRepeatClone: false);
+            affectedGroups.Add(todo.GroupId);
+        }
+
+        if (affectedGroups.Count > 0)
+        {
+            RefreshVisibleTodos();
+            SaveState();
+        }
+    }
+
+    private bool ApplyAutoArchivePolicy()
+    {
+        if (_state.Settings.AutoArchiveDays <= 0)
+        {
+            return false;
+        }
+
+        var threshold = DateTime.Now.AddDays(-_state.Settings.AutoArchiveDays);
+        var changed = false;
+        var affectedGroups = new HashSet<string>();
+        foreach (var todo in AllTodos.Where(t => t.IsDone && !t.IsArchived && t.CompletedAt.HasValue && t.CompletedAt.Value <= threshold).ToList())
+        {
+            todo.ArchivedGroupName = Groups.FirstOrDefault(g => g.Id == todo.GroupId)?.Name ?? todo.ArchivedGroupName;
+            todo.IsArchived = true;
+            changed = true;
+            affectedGroups.Add(todo.GroupId);
+        }
+
+        foreach (var groupId in affectedGroups)
+        {
+            ApplyGroupPartitionOrder(groupId);
+        }
+
+        return changed;
     }
 
     private bool MatchesCurrentFilter(TodoItem todo)
@@ -2015,6 +3207,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _ => "날짜순"
         };
 
+    private static string AutoArchiveDaysToText(int days)
+        => days switch
+        {
+            7 => "7일 후",
+            30 => "30일 후",
+            _ => "사용 안 함"
+        };
+
     private static double SafeFinite(double value, double fallback)
         => double.IsFinite(value) ? value : fallback;
 
@@ -2030,6 +3230,43 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         return null;
     }
+
+    private TodoItem? GetTodoFromMenuSender(object sender)
+    {
+        if (sender is not MenuItem item)
+        {
+            return null;
+        }
+
+        if (item.CommandParameter is string idFromParameter)
+        {
+            return AllTodos.FirstOrDefault(t => t.Id == idFromParameter);
+        }
+
+        var menu = GetOwningContextMenu(item);
+        return menu?.PlacementTarget is FrameworkElement element ? element.DataContext as TodoItem : null;
+    }
+
+    private static ContextMenu? GetOwningContextMenu(MenuItem item)
+    {
+        ItemsControl? parent = ItemsControl.ItemsControlFromItemContainer(item);
+        while (parent is not null)
+        {
+            if (parent is ContextMenu contextMenu)
+            {
+                return contextMenu;
+            }
+
+            parent = parent is MenuItem parentMenuItem
+                ? ItemsControl.ItemsControlFromItemContainer(parentMenuItem)
+                : null;
+        }
+
+        return null;
+    }
+
+    public string GetGroupName(string groupId)
+        => Groups.FirstOrDefault(g => g.Id == groupId)?.Name ?? "알 수 없는 그룹";
 
     private static TAncestor? GetAncestor<TAncestor>(DependencyObject? source) where TAncestor : DependencyObject
     {

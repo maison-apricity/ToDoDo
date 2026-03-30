@@ -1,4 +1,4 @@
-﻿namespace ToDoDo.Models;
+namespace ToDoDo.Models;
 
 public sealed class AppSettings
 {
@@ -9,4 +9,12 @@ public sealed class AppSettings
     public bool IsSidebarVisible { get; set; } = true;
     public bool IsPinnedToDesktop { get; set; } = true;
     public double SidebarWidth { get; set; } = 220;
+
+    public int AutoArchiveDays { get; set; } = 0;
+    public bool HideToTrayOnClose { get; set; } = false;
+    public bool StartMinimizedToTray { get; set; } = false;
+    public TodoPriority DefaultPriority { get; set; } = TodoPriority.Normal;
+    public TodoRepeat DefaultRepeat { get; set; } = TodoRepeat.None;
+    public bool DefaultUseDueDate { get; set; } = false;
+    public bool ShowCompletedStrikethrough { get; set; } = true;
 }

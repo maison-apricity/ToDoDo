@@ -100,6 +100,34 @@ public static class StorageService
         {
             state.Settings.SidebarWidth = 360;
         }
+
+        if (state.Settings.AutoArchiveDays is not (0 or 7 or 30))
+        {
+            state.Settings.AutoArchiveDays = 0;
+        }
+
+        foreach (var todo in state.Todos)
+        {
+            if (string.IsNullOrWhiteSpace(todo.Id))
+            {
+                todo.Id = Guid.NewGuid().ToString("N");
+            }
+
+            if (todo.CreatedAt == default)
+            {
+                todo.CreatedAt = DateTime.Now;
+            }
+
+            if (todo.IsDone && todo.CompletedAt is null)
+            {
+                todo.CompletedAt = DateTime.Now;
+            }
+
+            if (!todo.IsDone)
+            {
+                todo.CompletedAt = null;
+            }
+        }
     }
 
     private static double SafeFinite(double value, double fallback)

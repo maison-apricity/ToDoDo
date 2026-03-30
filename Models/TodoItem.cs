@@ -1,4 +1,4 @@
-﻿namespace ToDoDo.Models;
+namespace ToDoDo.Models;
 
 public sealed class TodoItem : ObservableObject
 {
@@ -6,14 +6,17 @@ public sealed class TodoItem : ObservableObject
     private string _groupId = string.Empty;
     private string _text = "새 할 일";
     private bool _isDone;
+    private bool _isArchived;
     private TodoPriority _priority = TodoPriority.Normal;
     private TodoRepeat _repeat = TodoRepeat.None;
     private DateTime? _dueDate;
+    private DateTime? _completedAt;
     private int _sortOrder;
     private bool _isEditing;
     private bool _isExpanded = true;
     private DateTime _createdAt = DateTime.Now;
     private bool _isCompletingFeedback;
+    private string _archivedGroupName = string.Empty;
 
     private string _editText = string.Empty;
     private TodoPriority _editPriority = TodoPriority.Normal;
@@ -51,6 +54,12 @@ public sealed class TodoItem : ObservableObject
                 OnPropertyChanged(nameof(CompleteActionText));
             }
         }
+    }
+
+    public bool IsArchived
+    {
+        get => _isArchived;
+        set => SetProperty(ref _isArchived, value);
     }
 
     public TodoPriority Priority
@@ -91,6 +100,12 @@ public sealed class TodoItem : ObservableObject
         }
     }
 
+    public DateTime? CompletedAt
+    {
+        get => _completedAt;
+        set => SetProperty(ref _completedAt, value);
+    }
+
     public int SortOrder
     {
         get => _sortOrder;
@@ -125,6 +140,18 @@ public sealed class TodoItem : ObservableObject
     {
         get => _isCompletingFeedback;
         set => SetProperty(ref _isCompletingFeedback, value);
+    }
+
+    public string ArchivedGroupName
+    {
+        get => _archivedGroupName;
+        set
+        {
+            if (SetProperty(ref _archivedGroupName, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(ArchivedGroupCaption));
+            }
+        }
     }
 
     public string EditText
@@ -208,6 +235,7 @@ public sealed class TodoItem : ObservableObject
         };
 
     public string EditDueText => EditUseDueDate && EditDueDate.HasValue ? EditDueDate.Value.ToString("yyyy.MM.dd") : "날짜 선택";
+    public string ArchivedGroupCaption => string.IsNullOrWhiteSpace(ArchivedGroupName) ? "이전 그룹 정보 없음" : $"이전 그룹 · {ArchivedGroupName}";
     public string EditRepeatText
         => EditRepeat switch
         {

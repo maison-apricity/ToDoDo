@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:models="clr-namespace:ToDoDo.Models"
         xmlns:conv="clr-namespace:ToDoDo.Converters"
+        xmlns:scm="clr-namespace:System.ComponentModel;assembly=WindowsBase"
         mc:Ignorable="d"
         Title="ToDoDo"
         Width="1020"
@@ -36,8 +37,8 @@
         <SolidColorBrush x:Key="MutedBrush" Color="#7D8BA7"/>
 
         <Style x:Key="IconButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="38"/>
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
             <Setter Property="Margin" Value="0,0,8,0"/>
             <Setter Property="Background" Value="#263246"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
@@ -52,14 +53,14 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="14">
+                                CornerRadius="12">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#30415B"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#7387A7"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#2B3A52"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#6C84A8"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#3A4C68"/>
@@ -141,16 +142,94 @@
         <Style x:Key="FilterButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
             <Setter Property="MinWidth" Value="86"/>
             <Setter Property="Height" Value="36"/>
-            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Padding" Value="12,0"/>
         </Style>
 
         <Style x:Key="ToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
             <Setter Property="Height" Value="36"/>
-            <Setter Property="MinWidth" Value="78"/>
+            <Setter Property="MinWidth" Value="72"/>
             <Setter Property="Padding" Value="14,0"/>
             <Setter Property="FontSize" Value="12.9"/>
             <Setter Property="Margin" Value="0"/>
         </Style>
+
+        <Style x:Key="FooterToggleButtonStyle" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" BorderThickness="0">
+                            <ContentPresenter HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CompactActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="72"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+
+        <ContextMenu x:Key="ActiveTodoContextMenu" x:Shared="False">
+            <MenuItem Header="수정" Click="RenameTodoMenuItem_Click"/>
+            <MenuItem Header="복제" Click="DuplicateTodoMenuItem_Click"/>
+            <Separator/>
+            <MenuItem Header="맨 위로" Click="MoveTodoToTopMenuItem_Click"/>
+            <MenuItem Header="맨 아래로" Click="MoveTodoToBottomMenuItem_Click"/>
+            <MenuItem Header="그룹 이동..." Click="OpenMoveTodoToGroupDialogMenuItem_Click"/>
+            <MenuItem Header="기한 빠르게 설정">
+                <MenuItem Header="오늘" Tag="today" Click="SetTodoDueDateQuickMenuItem_Click"/>
+                <MenuItem Header="내일" Tag="tomorrow" Click="SetTodoDueDateQuickMenuItem_Click"/>
+                <MenuItem Header="이번 주" Tag="thisweek" Click="SetTodoDueDateQuickMenuItem_Click"/>
+                <MenuItem Header="기한 제거" Tag="clear" Click="SetTodoDueDateQuickMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem Header="반복 설정">
+                <MenuItem Header="반복 없음" Tag="None" Click="SetTodoRepeatQuickMenuItem_Click"/>
+                <MenuItem Header="매일" Tag="Daily" Click="SetTodoRepeatQuickMenuItem_Click"/>
+                <MenuItem Header="매주" Tag="Weekly" Click="SetTodoRepeatQuickMenuItem_Click"/>
+                <MenuItem Header="매월" Tag="Monthly" Click="SetTodoRepeatQuickMenuItem_Click"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="완료" Click="MarkTodoDoneMenuItem_Click"/>
+            <MenuItem Header="삭제" Click="DeleteTodoMenuItem_Click"/>
+        </ContextMenu>
+
+        <ContextMenu x:Key="CompletedTodoContextMenu" x:Shared="False">
+            <MenuItem Header="수정" Click="RenameTodoMenuItem_Click"/>
+            <MenuItem Header="복제" Click="DuplicateTodoMenuItem_Click"/>
+            <Separator/>
+            <MenuItem Header="맨 위로" Click="MoveTodoToTopMenuItem_Click"/>
+            <MenuItem Header="맨 아래로" Click="MoveTodoToBottomMenuItem_Click"/>
+            <MenuItem Header="그룹 이동..." Click="OpenMoveTodoToGroupDialogMenuItem_Click"/>
+            <MenuItem Header="기한 빠르게 설정">
+                <MenuItem Header="오늘" Tag="today" Click="SetTodoDueDateQuickMenuItem_Click"/>
+                <MenuItem Header="내일" Tag="tomorrow" Click="SetTodoDueDateQuickMenuItem_Click"/>
+                <MenuItem Header="이번 주" Tag="thisweek" Click="SetTodoDueDateQuickMenuItem_Click"/>
+                <MenuItem Header="기한 제거" Tag="clear" Click="SetTodoDueDateQuickMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem Header="반복 설정">
+                <MenuItem Header="반복 없음" Tag="None" Click="SetTodoRepeatQuickMenuItem_Click"/>
+                <MenuItem Header="매일" Tag="Daily" Click="SetTodoRepeatQuickMenuItem_Click"/>
+                <MenuItem Header="매주" Tag="Weekly" Click="SetTodoRepeatQuickMenuItem_Click"/>
+                <MenuItem Header="매월" Tag="Monthly" Click="SetTodoRepeatQuickMenuItem_Click"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="복원" Click="RestoreTodoMenuItem_Click"/>
+            <MenuItem Header="보관" Click="ArchiveTodoMenuItem_Click"/>
+            <MenuItem Header="삭제" Click="DeleteTodoMenuItem_Click"/>
+        </ContextMenu>
 
         <Style x:Key="GlassTextBoxStyle" TargetType="TextBox">
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
@@ -232,7 +311,7 @@
             <Setter Property="Height" Value="40"/>
             <Setter Property="FontSize" Value="14.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
             <Setter Property="MinWidth" Value="0"/>
         </Style>
 
@@ -256,7 +335,7 @@
             BorderBrush="{StaticResource CardBorderBrush}"
             BorderThickness="1.2"
             CornerRadius="24"
-            Padding="14">
+            Padding="14,10">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -276,14 +355,16 @@
 
                 <Border Width="48"
                         Height="48"
-                        CornerRadius="16"
-                        Background="#7BC0FF">
-                    <Grid>
-                        <Ellipse Width="8" Height="8" Fill="#122034" Margin="10,10,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
-                        <Ellipse Width="8" Height="8" Fill="#122034" Margin="10,0,0,10" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
-                        <Rectangle Width="14" Height="3" Fill="#122034" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,11,10,0"/>
-                        <Rectangle Width="14" Height="3" Fill="#122034" RadiusX="1.5" RadiusY="1.5" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,11"/>
-                    </Grid>
+                        CornerRadius="14"
+                        Background="Transparent"
+                        BorderBrush="#4F6488"
+                        BorderThickness="1"
+                        Padding="3">
+                    <Image Source="{Binding HeaderIconSource}"
+                           Stretch="Uniform"
+                           RenderOptions.BitmapScalingMode="Fant"
+                           SnapsToDevicePixels="True"
+                           UseLayoutRounding="True"/>
                 </Border>
 
                 <TextBlock Grid.Column="2"
@@ -291,25 +372,65 @@
                            Foreground="{StaticResource TextPrimaryBrush}"
                            FontSize="22"
                            FontWeight="Bold"
-                           VerticalAlignment="Center"/>
+                           VerticalAlignment="Center"
+                           LineStackingStrategy="BlockLineHeight"
+                           LineHeight="28"
+                           Margin="0,1,0,0"/>
 
                 <StackPanel Grid.Column="3"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
                     <Button Style="{StaticResource IconButtonStyle}" Click="SidebarToggleButton_Click" ToolTip="그룹 보기/숨기기">
-                        <TextBlock Text="☰" FontSize="16" FontWeight="SemiBold"/>
+                        <Grid Width="16" Height="16">
+                            <Rectangle Width="14" Height="1.8" Fill="#F4F7FF" RadiusX="0.9" RadiusY="0.9" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <Rectangle Width="14" Height="1.8" Fill="#F4F7FF" RadiusX="0.9" RadiusY="0.9" VerticalAlignment="Center"/>
+                            <Rectangle Width="14" Height="1.8" Fill="#F4F7FF" RadiusX="0.9" RadiusY="0.9" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                        </Grid>
+                    </Button>
+                    <Button x:Name="ArchiveLauncherButton" Style="{StaticResource IconButtonStyle}" Click="OpenArchiveWindowButton_Click" ToolTip="보관함">
+                        <Grid Width="18" Height="18">
+                            <Path Data="M3,5 L15,5 L15,8 L3,8 Z M4,8 L14,8 L13,15 L5,15 Z" Stroke="#F4F7FF" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"/>
+                            <Rectangle Width="6" Height="1.6" Fill="#F4F7FF" RadiusX="0.8" RadiusY="0.8" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,1,0,0"/>
+                            <Border Width="14" Height="14" Background="#6F83FF" BorderBrush="#DCE5FF" BorderThickness="1" CornerRadius="7"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-5,-5"
+                                    Visibility="{Binding HasArchivedTodos, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding ArchivedCountText}" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                            </Border>
+                        </Grid>
                     </Button>
                     <Button x:Name="SettingsToggleButton" Style="{StaticResource IconButtonStyle}" Click="SettingsButton_Click" ToolTip="설정">
-                        <TextBlock Text="⚙" FontSize="15"/>
+                        <Grid Width="18" Height="18">
+                            <Path Fill="#F4F7FF" Stretch="Uniform" Data="M10.9,2.2 L11.5,3.8 C11.9,4.0 12.3,4.2 12.7,4.5 L14.3,4.0 L15.5,5.2 L15.0,6.8 C15.3,7.2 15.5,7.6 15.7,8.0 L17.3,8.6 L17.3,10.3 L15.7,10.8 C15.5,11.3 15.3,11.7 15.0,12.1 L15.5,13.7 L14.3,14.9 L12.7,14.4 C12.3,14.7 11.9,14.9 11.5,15.1 L10.9,16.7 L9.2,16.7 L8.6,15.1 C8.1,14.9 7.7,14.7 7.3,14.4 L5.7,14.9 L4.5,13.7 L5.0,12.1 C4.7,11.7 4.5,11.3 4.3,10.8 L2.7,10.3 L2.7,8.6 L4.3,8.0 C4.5,7.6 4.7,7.2 5.0,6.8 L4.5,5.2 L5.7,4.0 L7.3,4.5 C7.7,4.2 8.1,4.0 8.6,3.8 L9.2,2.2 Z M10.05,6.7 A2.75,2.75 0 1 0 10.05,12.2 A2.75,2.75 0 1 0 10.05,6.7 Z"/>
+                        </Grid>
                     </Button>
                     <Button x:Name="HeaderPinButton" Style="{StaticResource IconButtonStyle}" Click="PinButton_Click" ToolTip="바탕화면 고정">
-                        <TextBlock Text="📌" FontSize="14"/>
+                        <Grid Width="18" Height="18" SnapsToDevicePixels="True" UseLayoutRounding="True">
+                            <Image Source="assets/PinButton.png"
+                                   Width="18"
+                                   Height="18"
+                                   Stretch="Uniform"
+                                   SnapsToDevicePixels="True"
+                                   UseLayoutRounding="True"
+                                   RenderOptions.BitmapScalingMode="Fant"
+                                   RenderTransformOrigin="0.5,0.42">
+                                <Image.RenderTransform>
+                                    <RotateTransform x:Name="HeaderPinIconRotate" Angle="0"/>
+                                </Image.RenderTransform>
+                            </Image>
+                        </Grid>
                     </Button>
                     <Button Style="{StaticResource IconButtonStyle}" Click="MinimizeButton_Click" ToolTip="최소화">
-                        <TextBlock Text="—" FontSize="16" FontWeight="Bold" Margin="0,-2,0,0"/>
+                        <Rectangle Width="12" Height="1.8" RadiusX="0.9" RadiusY="0.9" Fill="#F4F7FF"/>
                     </Button>
                     <Button Style="{StaticResource IconButtonStyle}" Margin="0" Click="CloseButton_Click" ToolTip="닫기">
-                        <TextBlock Text="✕" FontSize="15" FontWeight="SemiBold"/>
+                        <Grid Width="14" Height="14">
+                            <Rectangle Width="16" Height="1.8" RadiusX="0.9" RadiusY="0.9" Fill="#F4F7FF" RenderTransformOrigin="0.5,0.5">
+                                <Rectangle.RenderTransform><RotateTransform Angle="45"/></Rectangle.RenderTransform>
+                            </Rectangle>
+                            <Rectangle Width="16" Height="1.8" RadiusX="0.9" RadiusY="0.9" Fill="#F4F7FF" RenderTransformOrigin="0.5,0.5">
+                                <Rectangle.RenderTransform><RotateTransform Angle="-45"/></Rectangle.RenderTransform>
+                            </Rectangle>
+                        </Grid>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -341,22 +462,29 @@
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    FontSize="24"
                                    FontWeight="Bold"
-                                   Margin="0,0,0,14"/>
+                                   LineStackingStrategy="BlockLineHeight"
+                                   LineHeight="30"
+                                   Margin="0,2,0,14"/>
 
                         <ListBox Grid.Row="1" x:Name="GroupListBox"
                                      ItemsSource="{Binding Groups}"
                                      SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
                                      Background="Transparent"
                                      BorderThickness="0"
+                                     HorizontalAlignment="Stretch"
+                                     VerticalAlignment="Stretch"
+                                     Margin="0,4,0,0"
+                                     Padding="0,2,0,2"
                                      HorizontalContentAlignment="Stretch"
                                      Foreground="{StaticResource TextPrimaryBrush}"
                                      AllowDrop="True"
                                      DragOver="GroupListBox_DragOver"
                                      Drop="GroupListBox_Drop"
                                      KeyDown="GroupListBox_KeyDown">
+                                
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
-                                        <Setter Property="Margin" Value="0,0,0,10"/>
+                                        <Setter Property="Margin" Value="0,0,0,8"/>
                                         <Setter Property="Padding" Value="0"/>
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                         <Setter Property="Template">
@@ -392,7 +520,7 @@
                                                 </ContextMenu>
                                             </Border.ContextMenu>
                                             <Border Style="{StaticResource GroupItemCardStyle}">
-                                                <Grid>
+                                                <Grid VerticalAlignment="Center">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="38"/>
                                                         <ColumnDefinition Width="10"/>
@@ -477,14 +605,16 @@
                             <TextBlock Text="{Binding MainTitleText}"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        FontSize="28"
-                                       FontWeight="Bold"/>
+                                       FontWeight="Bold"
+                                       LineStackingStrategy="BlockLineHeight"
+                                       LineHeight="34"/>
                             <TextBlock Text="{Binding SummaryText}"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        FontSize="13"
                                        Margin="0,4,0,0"/>
                         </StackPanel>
 
-                        <Grid x:Name="ToolbarGrid" Grid.Row="1" Margin="0,2,0,0" HorizontalAlignment="Stretch">
+                        <Grid x:Name="ToolbarGrid" Grid.Row="1" Margin="0,2,0,0" Width="{Binding ElementName=QuickAddLauncherButton, Path=ActualWidth}" HorizontalAlignment="Left">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition x:Name="ToolbarCol0" Width="1*"/>
                                 <ColumnDefinition Width="8"/>
@@ -522,7 +652,7 @@
 
                             <Border x:Name="ComposerCard" 
                                 Margin="0,10,0,0"
-                                Padding="14"
+                                Padding="14,10"
                                 CornerRadius="18"
                                 Background="#75182435"
                                 BorderBrush="#52627E"
@@ -644,20 +774,37 @@
                         </Border>
                         </StackPanel>
 
-                        <Grid Grid.Row="4">
-                            <ListBox x:Name="ActiveTodoListBox"
-                                     ItemsSource="{Binding VisibleTodos}"
-                                     SelectionMode="Extended"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     HorizontalContentAlignment="Stretch"
-                                     Foreground="{StaticResource TextPrimaryBrush}"
-                                     DragOver="ActiveTodoListBox_DragOver"
-                                     Drop="ActiveTodoListBox_Drop"
-                                     AllowDrop="True">
-                                <ListBox.ItemContainerStyle>
+                        <Grid x:Name="SelectionHostGrid" Grid.Row="4" Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" PreviewMouseLeftButtonDown="SelectionHostGrid_PreviewMouseLeftButtonDown" PreviewMouseMove="SelectionHostGrid_PreviewMouseMove" PreviewMouseLeftButtonUp="SelectionHostGrid_PreviewMouseLeftButtonUp">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0">
+                                    <ListBox x:Name="ActiveTodoListBox"
+                                             ItemsSource="{Binding VisibleTodos}"
+                                             SelectionMode="Extended"
+                                             Padding="0,2,0,2"
+                                             Background="Transparent"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             BorderThickness="0"
+                                             HorizontalAlignment="Stretch"
+                                             VerticalAlignment="Stretch"
+                                             HorizontalContentAlignment="Stretch"
+                                             Foreground="{StaticResource TextPrimaryBrush}"
+                                             DragOver="TodoListBox_DragOver"
+                                             Drop="TodoListBox_Drop"
+                                             AllowDrop="True">
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <VirtualizingStackPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+<ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
-                                        <Setter Property="Margin" Value="0,0,0,10"/>
+                                        <Setter Property="Margin" Value="0,0,0,8"/>
                                         <Setter Property="Padding" Value="0"/>
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                         <Setter Property="Template">
@@ -677,32 +824,48 @@
                                         </Setter>
                                     </Style>
                                 </ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate>
+<ListBox.ItemTemplate>
                                     <DataTemplate DataType="{x:Type models:TodoItem}">
                                         <Border Background="#62182435"
                                                 BorderBrush="#43536E"
                                                 BorderThickness="1"
                                                 CornerRadius="18"
-                                                Padding="14"
+                                                Padding="14,10"
+                                                Opacity="1"
                                                 MouseLeftButtonDown="TodoCard_MouseLeftButtonDown">
+                                            <Border.RenderTransform>
+                                                <TranslateTransform Y="0"/>
+                                            </Border.RenderTransform>
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Setter Property="Background" Value="#62182435"/>
                                                     <Setter Property="BorderBrush" Value="#43536E"/>
+                                                    <Setter Property="Opacity" Value="1"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsCompletingFeedback}" Value="True">
                                                             <Setter Property="Background" Value="#7A2B476F"/>
                                                             <Setter Property="BorderBrush" Value="#9FB2FF"/>
+                                                            <Setter Property="Opacity" Value="0.72"/>
+                                                            <DataTrigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard FillBehavior="HoldEnd">
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                                                         To="14"
+                                                                                         Duration="0:0:0.18"/>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                         To="0.55"
+                                                                                         Duration="0:0:0.18"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.EnterActions>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
                                             <Border.ContextMenu>
-                                                <ContextMenu>
-                                                    <MenuItem Header="삭제" Click="DeleteTodoMenuItem_Click"/>
-                                                </ContextMenu>
+                                                <StaticResource ResourceKey="ActiveTodoContextMenu"/>
                                             </Border.ContextMenu>
-                                            <Grid>
+                                            <Grid VerticalAlignment="Center">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
@@ -710,20 +873,32 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
 
-                                                <StackPanel Grid.Column="0">
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Text}"
+                                                               ToolTip="{Binding Text}"
                                                                Foreground="{StaticResource TextPrimaryBrush}"
-                                                               FontSize="18"
+                                                               FontSize="17"
                                                                FontWeight="SemiBold"
+                                                               TextWrapping="Wrap"
                                                                TextTrimming="CharacterEllipsis"
+                                                               LineStackingStrategy="BlockLineHeight"
+                                                               LineHeight="20"
+                                                               Height="40"
+                                                               ClipToBounds="True"
                                                                Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding IsDone}" Value="True">
                                                                         <Setter Property="Foreground" Value="#A2AECB"/>
-                                                                        <Setter Property="TextDecorations" Value="Strikethrough"/>
                                                                     </DataTrigger>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsDone}" Value="True"/>
+                                                                            <Condition Binding="{Binding DataContext.ShowCompletedStrikethroughSetting, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                                    </MultiDataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBlock.Style>
@@ -781,19 +956,21 @@
                                                                         Margin="0"
                                                                         Click="CycleInlineRepeatButton_Click"/>
                                                             </Grid>
-                                                            <Grid Grid.Row="4" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                                            <Grid Grid.Row="4" Margin="0,10,0,0">
                                                                 <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="96"/>
-                                                                    <ColumnDefinition Width="14"/>
-                                                                    <ColumnDefinition Width="96"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="110"/>
+                                                                    <ColumnDefinition Width="12"/>
+                                                                    <ColumnDefinition Width="110"/>
                                                                 </Grid.ColumnDefinitions>
-                                                                <Button Grid.Column="0" Style="{StaticResource ActionButtonStyle}" Height="38" Content="취소" Margin="0" Click="CancelInlineEditButton_Click"/>
-                                                                <Button Grid.Column="2" Style="{StaticResource PrimaryActionButtonStyle}" Height="38" Content="저장" Margin="0" Click="SaveInlineEditButton_Click"/>
+                                                                <Button Grid.Column="1" Style="{StaticResource ActionButtonStyle}" Height="38" MinWidth="0" Content="취소" Margin="0" Click="CancelInlineEditButton_Click"/>
+                                                                <Button Grid.Column="3" Style="{StaticResource PrimaryActionButtonStyle}" Height="38" MinWidth="0" Content="저장" Margin="0" Click="SaveInlineEditButton_Click"/>
                                                             </Grid>
                                                         </Grid>
                                                     </Border>
 
-                                                    <WrapPanel Margin="0,10,0,0"
+                                                    <WrapPanel Margin="0,6,0,0"
+                                                              VerticalAlignment="Center"
                                                               Visibility="{Binding ShowMeta, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Border Style="{StaticResource InfoChipStyle}">
                                                             <TextBlock Text="{Binding PriorityText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
@@ -805,37 +982,25 @@
                                                             <TextBlock Text="{Binding RepeatText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
                                                         </Border>
                                                     </WrapPanel>
-                                                    <WrapPanel Margin="0,10,0,0">
-                                                        <WrapPanel.Style>
-                                                            <Style TargetType="WrapPanel">
-                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                <Style.Triggers>
-                                                                    <MultiDataTrigger>
-                                                                        <MultiDataTrigger.Conditions>
-                                                                            <Condition Binding="{Binding IsDone}" Value="True"/>
-                                                                            <Condition Binding="{Binding AreCompletedDetailsCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="False"/>
-                                                                        </MultiDataTrigger.Conditions>
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                    </MultiDataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </WrapPanel.Style>
+                                                    <WrapPanel Margin="0,6,0,0"
+                                                              VerticalAlignment="Center"
+                                                              Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Border Style="{StaticResource InfoChipStyle}">
                                                             <TextBlock Text="완료" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
                                                         </Border>
                                                     </WrapPanel>
                                                 </StackPanel>
 
-                                                <Grid Grid.Column="1" VerticalAlignment="Top">
+                                                <Grid Grid.Column="1" VerticalAlignment="Center">
                                                     <Grid.Resources>
                                                         <Style x:Key="InlineActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
-                                                            <Setter Property="MinWidth" Value="70"/>
+                                                            <Setter Property="MinWidth" Value="78"/>
                                                             <Setter Property="Height" Value="34"/>
-                                                            <Setter Property="Padding" Value="12,0"/>
+                                                            <Setter Property="Padding" Value="14,0"/>
                                                             <Setter Property="Margin" Value="0"/>
                                                         </Style>
                                                     </Grid.Resources>
-                                                    <StackPanel>
+                                                    <StackPanel VerticalAlignment="Center">
                                                         <StackPanel.Style>
                                                             <Style TargetType="StackPanel">
                                                                 <Setter Property="Visibility" Value="Visible"/>
@@ -846,36 +1011,376 @@
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </StackPanel.Style>
-                                                        <Button Margin="0,0,0,8" Content="수정" Click="EditTodoButton_Click">
-                                                            <Button.Style>
-                                                                <Style TargetType="Button" BasedOn="{StaticResource InlineActionButtonStyle}">
-                                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                                    <Style.Triggers>
-                                                                        <MultiDataTrigger>
-                                                                            <MultiDataTrigger.Conditions>
-                                                                                <Condition Binding="{Binding IsDone}" Value="True"/>
-                                                                                <Condition Binding="{Binding AreCompletedDetailsCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
-                                                                            </MultiDataTrigger.Conditions>
-                                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                                        </MultiDataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </Button.Style>
-                                                        </Button>
                                                         <Button Style="{StaticResource InlineActionButtonStyle}" Content="{Binding CompleteActionText}" Click="CompleteTodoButton_Click"/>
                                                     </StackPanel>
                                                 </Grid>
 
-                                                <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="20" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
+                                                <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="18" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." Tag="DragHandle" PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
-                            </ListBox>
+                                    </ListBox>
 
-<Border x:Name="EmptyPlaceholderCard" Visibility="Collapsed"/>
+                                    <Border x:Name="EmptyPlaceholderCard" Visibility="Collapsed"/>
+
+                                    <Canvas x:Name="SelectionOverlayCanvas"
+                                            IsHitTestVisible="False"
+                                            Panel.ZIndex="35">
+                                        <Rectangle x:Name="SelectionRubberBand"
+                                                   Visibility="Collapsed"
+                                                   RadiusX="10"
+                                                   RadiusY="10"
+                                                   Stroke="#8EA0FF"
+                                                   StrokeThickness="1.2"
+                                                   Fill="#2B7287FF"/>
+                                    </Canvas>
+                                </Grid>
+
+                                <Border Grid.Row="2"
+                                        Margin="0,12,0,0"
+                                        VerticalAlignment="Top">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasCompletedTodos}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding AreCompletedDetailsCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="8"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Grid.Row="0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="8"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="완료 목록 작업"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="13"
+                                                       VerticalAlignment="Center"/>
+                                            <Button Grid.Column="1"
+                                                    Style="{StaticResource CompactActionButtonStyle}"
+                                                    Content="모두 복원"
+                                                    Click="RestoreAllCompletedButton_Click"/>
+                                            <Button Grid.Column="3"
+                                                    Style="{StaticResource CompactActionButtonStyle}"
+                                                    Content="모두 보관"
+                                                    Margin="0"
+                                                    Click="ArchiveAllCompletedButton_Click"/>
+                                        </Grid>
+                                        <ListBox Grid.Row="2"
+                                                 x:Name="CompletedTodoListBox"
+                                                 ItemsSource="{Binding CompletedVisibleTodos}"
+                                                 SelectionMode="Extended"
+                                                 Padding="0,2,0,2"
+                                                 MaxHeight="240"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 HorizontalContentAlignment="Stretch"
+                                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 DragOver="TodoListBox_DragOver"
+                                                 Drop="TodoListBox_Drop"
+                                                 AllowDrop="True">
+                                            <ListBox.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <VirtualizingStackPanel/>
+                                                </ItemsPanelTemplate>
+                                            </ListBox.ItemsPanel>
+<ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Margin" Value="0,0,0,8"/>
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="SelectionBorder" Background="Transparent" CornerRadius="18">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="SelectionBorder" Property="BorderBrush" Value="#8EA0FF"/>
+                                                            <Setter TargetName="SelectionBorder" Property="BorderThickness" Value="1"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+<ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type models:TodoItem}">
+                                        <Border Background="#62182435"
+                                                BorderBrush="#43536E"
+                                                BorderThickness="1"
+                                                CornerRadius="18"
+                                                Padding="14,10"
+                                                Opacity="1"
+                                                MouseLeftButtonDown="TodoCard_MouseLeftButtonDown">
+                                            <Border.RenderTransform>
+                                                <TranslateTransform Y="0"/>
+                                            </Border.RenderTransform>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#62182435"/>
+                                                    <Setter Property="BorderBrush" Value="#43536E"/>
+                                                    <Setter Property="Opacity" Value="1"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCompletingFeedback}" Value="True">
+                                                            <Setter Property="Background" Value="#7A2B476F"/>
+                                                            <Setter Property="BorderBrush" Value="#9FB2FF"/>
+                                                            <Setter Property="Opacity" Value="0.72"/>
+                                                            <DataTrigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard FillBehavior="HoldEnd">
+                                                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.Y)"
+                                                                                         To="14"
+                                                                                         Duration="0:0:0.18"/>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                                         To="0.55"
+                                                                                         Duration="0:0:0.18"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.EnterActions>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Border.ContextMenu>
+                                                <StaticResource ResourceKey="CompletedTodoContextMenu"/>
+                                            </Border.ContextMenu>
+                                            <Grid VerticalAlignment="Center">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="12"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Text}"
+                                                               ToolTip="{Binding Text}"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                                               FontSize="17"
+                                                               FontWeight="SemiBold"
+                                                               TextWrapping="Wrap"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               LineStackingStrategy="BlockLineHeight"
+                                                               LineHeight="20"
+                                                               Height="40"
+                                                               ClipToBounds="True"
+                                                               Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                                        <Setter Property="Foreground" Value="#A2AECB"/>
+                                                                    </DataTrigger>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsDone}" Value="True"/>
+                                                                            <Condition Binding="{Binding DataContext.ShowCompletedStrikethroughSetting, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+
+                                                    <Border Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                            Padding="0"
+                                                            CornerRadius="16"
+                                                            BorderBrush="#52627E"
+                                                            BorderThickness="1"
+                                                            Margin="0,6,0,0">
+                                                        <Grid Margin="14">
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto"/>
+                                                                <RowDefinition Height="12"/>
+                                                                <RowDefinition Height="Auto"/>
+                                                                <RowDefinition Height="12"/>
+                                                                <RowDefinition Height="Auto"/>
+                                                            </Grid.RowDefinitions>
+                                                            <TextBox Grid.Row="0"
+                                                                     Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource GlassTextBoxStyle}"
+                                                                     FontSize="15"
+                                                                     Loaded="InlineEditTextBox_Loaded"
+                                                                     KeyDown="InlineEditTextBox_KeyDown"/>
+                                                            <Grid Grid.Row="2" VerticalAlignment="Center">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="8"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="8"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="8"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <ToggleButton Grid.Column="0"
+                                                                              Style="{StaticResource ToggleChipButtonStyle}"
+                                                                              IsChecked="{Binding EditUseDueDate, UpdateSourceTrigger=PropertyChanged}"
+                                                                              Content="기한 설정"
+                                                                              Margin="0"/>
+                                                                <Button Grid.Column="2" Style="{StaticResource ActionButtonStyle}"
+                                                                        MinWidth="0"
+                                                                        Content="{Binding EditDueText}"
+                                                                        Margin="0"
+                                                                        IsEnabled="{Binding EditUseDueDate}"
+                                                                        Click="InlineDueDateButton_Click"/>
+                                                                <Button Grid.Column="4" Style="{StaticResource ActionButtonStyle}"
+                                                                        MinWidth="0"
+                                                                        Content="{Binding EditPriorityText}"
+                                                                        Margin="0"
+                                                                        Click="CycleInlinePriorityButton_Click"/>
+                                                                <Button Grid.Column="6" Style="{StaticResource ActionButtonStyle}"
+                                                                        MinWidth="0"
+                                                                        Content="{Binding EditRepeatText}"
+                                                                        Margin="0"
+                                                                        Click="CycleInlineRepeatButton_Click"/>
+                                                            </Grid>
+                                                            <Grid Grid.Row="4" Margin="0,10,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="110"/>
+                                                                    <ColumnDefinition Width="12"/>
+                                                                    <ColumnDefinition Width="110"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <Button Grid.Column="1" Style="{StaticResource ActionButtonStyle}" Height="38" MinWidth="0" Content="취소" Margin="0" Click="CancelInlineEditButton_Click"/>
+                                                                <Button Grid.Column="3" Style="{StaticResource PrimaryActionButtonStyle}" Height="38" MinWidth="0" Content="저장" Margin="0" Click="SaveInlineEditButton_Click"/>
+                                                            </Grid>
+                                                        </Grid>
+                                                    </Border>
+
+                                                    <WrapPanel Margin="0,6,0,0"
+                                                              VerticalAlignment="Center"
+                                                              Visibility="{Binding ShowMeta, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <Border Style="{StaticResource InfoChipStyle}">
+                                                            <TextBlock Text="{Binding PriorityText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                        <Border Style="{StaticResource InfoChipStyle}" Visibility="{Binding HasDueDate, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                            <TextBlock Text="{Binding DueText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                        <Border Style="{StaticResource InfoChipStyle}" Visibility="{Binding HasRepeat, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                            <TextBlock Text="{Binding RepeatText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                    </WrapPanel>
+                                                    <WrapPanel Margin="0,6,0,0"
+                                                              VerticalAlignment="Center"
+                                                              Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <Border Style="{StaticResource InfoChipStyle}">
+                                                            <TextBlock Text="완료" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                    </WrapPanel>
+                                                </StackPanel>
+
+                                                <Grid Grid.Column="1" VerticalAlignment="Center">
+                                                    <Grid.Resources>
+                                                        <Style x:Key="InlineActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+                                                            <Setter Property="MinWidth" Value="78"/>
+                                                            <Setter Property="Height" Value="34"/>
+                                                            <Setter Property="Padding" Value="14,0"/>
+                                                            <Setter Property="Margin" Value="0"/>
+                                                        </Style>
+                                                    </Grid.Resources>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+                                                        <Button Margin="0,0,0,8" Style="{StaticResource InlineActionButtonStyle}" Content="{Binding CompleteActionText}" Click="CompleteTodoButton_Click"/>
+                                                        <Button Style="{StaticResource InlineActionButtonStyle}"
+                                                                Content="삭제"
+                                                                Click="DeleteTodoButton_Click"
+                                                                Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="18" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." Tag="DragHandle" PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
+                                </Border>
+                                <Border Grid.Row="1"
+                                        Margin="0,12,0,0"
+                                        Padding="18,12"
+                                        CornerRadius="16"
+                                        Background="#334561"
+                                        BorderBrush="#6F87AA"
+                                        BorderThickness="1.1"
+                                        Visibility="{Binding HasCompletedTodos, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Button x:Name="CompletedFooterButton"
+                                            Style="{StaticResource FooterToggleButtonStyle}"
+                                            Click="ToggleCompletedDetailsButton_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="14"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="완료된 할 일"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       FontSize="15.5"
+                                                       FontWeight="Bold"
+                                                       VerticalAlignment="Center"/>
+                                            <Border Grid.Column="1"
+                                                    Padding="12,4"
+                                                    CornerRadius="10"
+                                                    Background="#2E3F59"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CompletedCountText}"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="3"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="⌄"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding AreCompletedDetailsCollapsed, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                                <Setter Property="Text" Value="›"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Button>
+                                </Border>
+                            </Grid>
                         </Grid>
-                    </Grid>
                 </Border>
             </Grid>
             
@@ -911,10 +1416,63 @@
                 </Border>
             </Grid>
 
+
+            <Popup x:Name="InsertionPreviewPopup"
+                   Grid.RowSpan="3"
+                   Panel.ZIndex="58"
+                   PlacementTarget="{Binding ElementName=RootChrome}"
+                   Placement="RelativePoint"
+                   AllowsTransparency="True"
+                   PopupAnimation="None"
+                   StaysOpen="True"
+                   IsHitTestVisible="False">
+                <Grid x:Name="InsertionPreviewMarker"
+                      Width="240"
+                      Height="6"
+                      Opacity="0.72">
+                    <Border Height="2"
+                            VerticalAlignment="Center"
+                            CornerRadius="1"
+                            Background="#A7C9FF"/>
+                </Grid>
+            </Popup>
+
+            <Popup x:Name="DragPreviewPopup"
+                   Grid.RowSpan="3"
+                   Panel.ZIndex="60"
+                   PlacementTarget="{Binding ElementName=RootChrome}"
+                   Placement="RelativePoint"
+                   AllowsTransparency="True"
+                   PopupAnimation="None"
+                   StaysOpen="True"
+                   IsHitTestVisible="False">
+                <Border x:Name="DragPreviewCard"
+                        Width="300"
+                        Height="98"
+                        Padding="14"
+                        CornerRadius="16"
+                        Background="#EE223551"
+                        BorderBrush="#B7C6FF"
+                        BorderThickness="1.4"
+                        Opacity="0.96">
+                    <StackPanel>
+                        <TextBlock x:Name="DragPreviewTitleText"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="DragPreviewMetaText"
+                                   Margin="0,6,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12.5"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
+            </Popup>
             <Border x:Name="SettingsPanel"
                     Grid.RowSpan="3"
                     Panel.ZIndex="40"
-                    Width="280"
+                    Width="320"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Top"
                     Margin="0,54,0,0"
@@ -923,17 +1481,63 @@
                     Background="#E51B2637"
                     BorderBrush="#556983"
                     BorderThickness="1"
-                    Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVisibilityConverter}}">
-                <StackPanel>
-                    <TextBlock Text="설정"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               FontSize="20"
-                               FontWeight="Bold"
-                               Margin="0,0,0,14"/>
-                    <Button x:Name="SettingsPinButton" Style="{StaticResource ActionButtonStyle}" Content="바탕화면 고정" Click="PinButton_Click" Margin="0,0,0,10"/>
-                    <Button Style="{StaticResource ActionButtonStyle}" Content="백업 내보내기" Click="ExportBackupButton_Click" Margin="0,0,0,10"/>
-                    <Button Style="{StaticResource ActionButtonStyle}" Content="백업 가져오기" Click="ImportBackupButton_Click" Margin="0"/>
-                </StackPanel>
+                    Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="620">
+                    <StackPanel>
+                        <TextBlock Text="설정"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   FontSize="20"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,14"/>
+
+                        <TextBlock Text="창 / 트레이"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12.5"
+                                   Margin="0,0,0,8"/>
+                        <Button x:Name="SettingsPinButton" Style="{StaticResource ActionButtonStyle}" Content="바탕화면 고정" Click="PinButton_Click" Margin="0,0,0,10"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding CloseBehaviorSettingText}" Click="ToggleCloseBehaviorSettingButton_Click" Margin="0,0,0,10"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding StartMinimizedSettingText}" Click="ToggleStartMinimizedSettingButton_Click" Margin="0,0,0,14"/>
+
+                        <TextBlock Text="새 할 일 기본값"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12.5"
+                                   Margin="0,0,0,8"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding DefaultPrioritySettingText}" Click="CycleDefaultPrioritySettingButton_Click" Margin="0,0,0,10"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding DefaultRepeatSettingText}" Click="CycleDefaultRepeatSettingButton_Click" Margin="0,0,0,10"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding DefaultDueDateSettingText}" Click="ToggleDefaultDueDateSettingButton_Click" Margin="0,0,0,14"/>
+
+                        <TextBlock Text="완료 / 보관"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12.5"
+                                   Margin="0,0,0,8"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding AutoArchiveSettingText}" Click="CycleAutoArchiveSettingButton_Click" Margin="0,0,0,10"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="{Binding CompletedStrikeThroughSettingText}" Click="ToggleCompletedStrikeThroughSettingButton_Click" Margin="0,0,0,10"/>
+                        <Border Background="#162338" BorderBrush="#43536E" BorderThickness="1" CornerRadius="16" Padding="12" Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock Text="{Binding ArchivedSummaryText}"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           FontSize="13.5"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="보관된 항목은 목록에서 숨겨지며 여기에서 한꺼번에 복원하거나 비울 수 있습니다."
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           Margin="0,6,0,10"/>
+                                <WrapPanel>
+                                    <Button Style="{StaticResource CompactActionButtonStyle}" Content="보관 모두 복원" Click="RestoreArchivedTodosButton_Click"/>
+                                    <Button Style="{StaticResource CompactActionButtonStyle}" Content="보관 모두 삭제" Margin="0" Click="DeleteArchivedTodosButton_Click"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="백업"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="12.5"
+                                   Margin="0,0,0,8"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="백업 내보내기" Click="ExportBackupButton_Click" Margin="0,0,0,10"/>
+                        <Button Style="{StaticResource ActionButtonStyle}" Content="백업 가져오기" Click="ImportBackupButton_Click" Margin="0"/>
+                    </StackPanel>
+                </ScrollViewer>
             </Border>
         </Grid>
     </Border>

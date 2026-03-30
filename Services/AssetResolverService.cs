@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,6 +11,29 @@ namespace ToDoDo.Services
         // MainWindow.xaml.cs에서 기대하는 메서드명 유지
         public static BitmapFrame? ResolveWindowIcon()
         {
+            return TryLoadWindowIcon();
+        }
+
+        public static BitmapSource? ResolveHeaderImage()
+        {
+            var pngPath = FindBestPngPath();
+            if (!string.IsNullOrWhiteSpace(pngPath) && File.Exists(pngPath))
+            {
+                try
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.UriSource = new Uri(pngPath, UriKind.Absolute);
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    return bitmap;
+                }
+                catch
+                {
+                }
+            }
+
             return TryLoadWindowIcon();
         }
 
@@ -132,15 +155,69 @@ namespace ToDoDo.Services
             }
         }
 
-        private static int ScoreIconPath(string path)
+        private static string? FindBestPngPath()
         {
+            var assetDirs = EnumerateCandidateAssetDirs()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (assetDirs.Count == 0)
+            {
+                return null;
+            }
+
+            var files = new List<string>();
+
+            foreach (var dir in assetDirs)
+            {
+                try
+                {
+                    files.AddRange(Directory.EnumerateFiles(dir, "*.png", SearchOption.AllDirectories));
+                }
+                catch
+                {
+                }
+            }
+
+            if (files.Count == 0)
+            {
+                return null;
+            }
+
+            return files
+                .OrderBy(ScorePngPath)
+                .ThenBy(p => p.Length)
+                .FirstOrDefault();
+        }
+
+        private static int ScorePngPath(string path)
+        {
+            var normalized = path.Replace('\\', '/').ToLowerInvariant();
             var name = Path.GetFileName(path).ToLowerInvariant();
 
-            if (name == "app.ico") return 0;
-            if (name == "tododo.ico") return 1;
-            if (name == "icon.ico") return 2;
-            if (name.Contains("app")) return 10;
-            if (name.Contains("tododo")) return 11;
+            if (normalized.EndsWith("/assets/tododo.png")) return 0;
+            if (normalized.EndsWith("/assets/app.png")) return 1;
+            if (name == "tododo.png") return 2;
+            if (name == "app.png") return 3;
+            if (name == "icon.png") return 4;
+            if (name.Contains("tododo")) return 10;
+            if (name.Contains("app")) return 11;
+            if (name.Contains("icon")) return 12;
+            return 100;
+        }
+
+        private static int ScoreIconPath(string path)
+        {
+            var normalized = path.Replace('\\', '/').ToLowerInvariant();
+            var name = Path.GetFileName(path).ToLowerInvariant();
+
+            if (normalized.EndsWith("/assets/tododo.ico")) return 0;
+            if (normalized.EndsWith("/assets/app.ico")) return 1;
+            if (name == "tododo.ico") return 2;
+            if (name == "app.ico") return 3;
+            if (name == "icon.ico") return 4;
+            if (name.Contains("tododo")) return 10;
+            if (name.Contains("app")) return 11;
             if (name.Contains("icon")) return 12;
             return 100;
         }
