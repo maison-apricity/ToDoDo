@@ -11,10 +11,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-<<<<<<< HEAD
 using System.Windows.Data;
-=======
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
 using ToDoDo.Models;
 using ToDoDo.Services;
 using WpfButton = System.Windows.Controls.Button;
@@ -70,10 +67,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private TodoItem? _inlineDueDateTodo;
     private const double HiddenMainMinWidth = 620;
     private readonly DispatcherTimer _dragPreviewTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
-<<<<<<< HEAD
     private readonly DispatcherTimer _windowStateSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
-=======
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
     private bool _isDragPreviewVisible;
     private ListBoxItem? _lastInsertionTargetContainer;
     private bool _lastInsertionAfter;
@@ -1760,175 +1754,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
 
-<<<<<<< HEAD
     private void SelectionHostGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-=======
-    private void ActiveTodoListBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (_draggedTodoItem is not null)
         {
-            return;
-        }
-
-        var source = e.OriginalSource as DependencyObject;
-        if (!CanStartRubberBandSelection(source))
-        {
-            return;
-        }
-
-        _isRubberBandCandidate = true;
-        _isRubberBandSelecting = false;
-        _rubberBandStartPoint = e.GetPosition(SelectionHostGrid);
-        _rubberBandStartedOnBlank = GetAncestor<ListBoxItem>(source) is null;
-        _rubberBandCurrentSelection.Clear();
-    }
-
-    private void ActiveTodoListBox_PreviewMouseMove(object sender, WpfMouseEventArgs e)
-    {
-        if (!_isRubberBandCandidate || e.LeftButton != MouseButtonState.Pressed)
-        {
-            return;
-        }
-
-        var currentPoint = e.GetPosition(SelectionHostGrid);
-        if (!_isRubberBandSelecting)
-        {
-            if (Math.Abs(currentPoint.X - _rubberBandStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
-                Math.Abs(currentPoint.Y - _rubberBandStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
-            {
-                return;
-            }
-
-            _isRubberBandSelecting = true;
-            Mouse.Capture(SelectionHostGrid, CaptureMode.Element);
-        }
-
-        UpdateRubberBandVisual(currentPoint);
-        e.Handled = true;
-    }
-
-    private void ActiveTodoListBox_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_isRubberBandSelecting)
-        {
-            ApplyRubberBandSelection(e.GetPosition(SelectionHostGrid));
-            EndRubberBandSelection();
-            e.Handled = true;
-            return;
-        }
-
-        if (_isRubberBandCandidate && _rubberBandStartedOnBlank)
-        {
-            ActiveTodoListBox.SelectedItems.Clear();
-        }
-
-        ResetRubberBandState();
-    }
-
-    private bool CanStartRubberBandSelection(DependencyObject? source)
-    {
-        if (source is null)
-        {
-            return false;
-        }
-
-        var current = source;
-        while (current is not null)
-        {
-            if (current is FrameworkElement fe && fe.Tag is string tag && tag == "DragHandle")
-            {
-                return false;
-            }
-
-            if (current is Button || current is TextBox || current is ToggleButton || current is Calendar || current is System.Windows.Controls.Primitives.ScrollBar || current is System.Windows.Controls.Primitives.Thumb)
-            {
-                return false;
-            }
-
-            current = VisualTreeHelper.GetParent(current);
-        }
-
-        return true;
-    }
-
-    private void UpdateRubberBandVisual(WpfPoint currentPoint)
-    {
-        var left = Math.Min(_rubberBandStartPoint.X, currentPoint.X);
-        var top = Math.Min(_rubberBandStartPoint.Y, currentPoint.Y);
-        var width = Math.Abs(currentPoint.X - _rubberBandStartPoint.X);
-        var height = Math.Abs(currentPoint.Y - _rubberBandStartPoint.Y);
-
-        Canvas.SetLeft(SelectionRubberBand, left);
-        Canvas.SetTop(SelectionRubberBand, top);
-        SelectionRubberBand.Width = width;
-        SelectionRubberBand.Height = height;
-        SelectionRubberBand.Visibility = Visibility.Visible;
-    }
-
-    private Rect GetRubberBandRect(WpfPoint currentPoint)
-    {
-        var left = Math.Min(_rubberBandStartPoint.X, currentPoint.X);
-        var top = Math.Min(_rubberBandStartPoint.Y, currentPoint.Y);
-        var width = Math.Abs(currentPoint.X - _rubberBandStartPoint.X);
-        var height = Math.Abs(currentPoint.Y - _rubberBandStartPoint.Y);
-        return new Rect(left, top, width, height);
-    }
-
-    private void ApplyRubberBandSelection(WpfPoint currentPoint)
-    {
-        var selectionRect = GetRubberBandRect(currentPoint);
-        if (selectionRect.Width < 1 || selectionRect.Height < 1)
-        {
-            return;
-        }
-
-        var hits = new List<TodoItem>();
-        foreach (var todo in VisibleTodos)
-        {
-            if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(todo) is not ListBoxItem container)
-            {
-                continue;
-            }
-
-            var topLeft = container.TransformToAncestor(SelectionHostGrid).Transform(new WpfPoint(0, 0));
-            var itemRect = new Rect(topLeft, new WpfSize(container.ActualWidth, container.ActualHeight));
-            if (selectionRect.IntersectsWith(itemRect))
-            {
-                hits.Add(todo);
-            }
-        }
-
-        ActiveTodoListBox.SelectedItems.Clear();
-        foreach (var todo in hits)
-        {
-            ActiveTodoListBox.SelectedItems.Add(todo);
-        }
-    }
-
-    private void EndRubberBandSelection()
-    {
-        ResetRubberBandState();
-        SelectionRubberBand.Visibility = Visibility.Collapsed;
-        SelectionRubberBand.Width = 0;
-        SelectionRubberBand.Height = 0;
-        Mouse.Capture(null);
-    }
-
-    private void ResetRubberBandState()
-    {
-        _isRubberBandCandidate = false;
-        _isRubberBandSelecting = false;
-        _rubberBandStartedOnBlank = false;
-        _rubberBandCurrentSelection.Clear();
-    }
-
-
-    private void ActiveTodoListBox_DragOver(object sender, WpfDragEventArgs e)
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
-    {
-        if (_draggedTodoItem is not null)
-        {
-<<<<<<< HEAD
             return;
         }
 
@@ -2160,8 +1989,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var source = e.Data.GetData(typeof(TodoItem)) as TodoItem;
         if (source is null || !CanDropTodoOnListBox(source, listBox))
         {
-=======
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
             ClearInsertionFeedback();
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -2170,11 +1997,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         e.Effects = DragDropEffects.Move;
         e.Handled = true;
-<<<<<<< HEAD
         UpdateDropInsertionFeedback(listBox, e.GetPosition(listBox), e.OriginalSource as DependencyObject);
-=======
-        UpdateDropInsertionFeedback(e.GetPosition(ActiveTodoListBox), e.OriginalSource as DependencyObject);
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
         UpdateDragPreviewPosition();
     }
 
@@ -2200,7 +2023,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var targetContainer = GetAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-<<<<<<< HEAD
             var targetItem = targetContainer?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(e.GetPosition(listBox), listBox);
             if (targetItem is not null && targetItem.IsDone != source.IsDone)
             {
@@ -2208,9 +2030,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 targetContainer = null;
             }
 
-=======
-            var targetItem = targetContainer?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(e.GetPosition(ActiveTodoListBox));
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
             groupItems.Remove(source);
 
             var insertIndex = groupItems.Count;
@@ -2223,11 +2042,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
                 else
                 {
-<<<<<<< HEAD
                     var container = targetContainer ?? (listBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem);
-=======
-                    var container = targetContainer ?? (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem);
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
                     if (container is not null)
                     {
                         var position = e.GetPosition(container);
@@ -2275,15 +2090,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-<<<<<<< HEAD
         var ownerListBox = GetTodoListBoxForItem(todo);
         if (ownerListBox is null)
         {
             return;
         }
 
-=======
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
         if (_currentSortMode != SortMode.Manual)
         {
             SnapCurrentOrderToManual(todo.GroupId);
@@ -2323,13 +2135,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ShowDragPreview(_draggedTodoItem);
         System.Windows.GiveFeedbackEventHandler feedbackHandler = DragPreviewGiveFeedback;
         System.Windows.QueryContinueDragEventHandler continueHandler = DragPreviewQueryContinueDrag;
-<<<<<<< HEAD
         ownerListBox.GiveFeedback += feedbackHandler;
         ownerListBox.QueryContinueDrag += continueHandler;
-=======
-        ActiveTodoListBox.GiveFeedback += feedbackHandler;
-        ActiveTodoListBox.QueryContinueDrag += continueHandler;
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
         try
         {
             var data = new System.Windows.DataObject(typeof(TodoItem), _draggedTodoItem);
@@ -2337,13 +2144,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         finally
         {
-<<<<<<< HEAD
             ownerListBox.GiveFeedback -= feedbackHandler;
             ownerListBox.QueryContinueDrag -= continueHandler;
-=======
-            ActiveTodoListBox.GiveFeedback -= feedbackHandler;
-            ActiveTodoListBox.QueryContinueDrag -= continueHandler;
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
             HideDragPreview();
             ClearInsertionFeedback();
             Mouse.Capture(null);
@@ -2356,12 +2158,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DragPreviewTitleText.Text = todo.Text;
         DragPreviewMetaText.Text = $"{todo.PriorityText} · {(todo.IsDone ? "완료됨" : "진행 중")}";
 
-<<<<<<< HEAD
         var ownerListBox = GetTodoListBoxForItem(todo);
         if (ownerListBox?.ItemContainerGenerator.ContainerFromItem(todo) is ListBoxItem container)
-=======
-        if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(todo) is ListBoxItem container)
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
         {
             DragPreviewCard.Width = Math.Max(220, container.ActualWidth * 0.88);
             DragPreviewCard.Height = Math.Max(86, container.ActualHeight * 0.88);
@@ -2427,11 +2225,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DragPreviewPopup.VerticalOffset = local.Y + 20;
     }
 
-<<<<<<< HEAD
     private void UpdateDropInsertionFeedback(ListBox listBox, WpfPoint point, DependencyObject? originalSource)
-=======
-    private void UpdateDropInsertionFeedback(WpfPoint point, DependencyObject? originalSource)
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
     {
         if (_draggedTodoItem is null)
         {
@@ -2440,7 +2234,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var container = GetAncestor<ListBoxItem>(originalSource);
-<<<<<<< HEAD
         var targetItem = container?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(point, listBox);
 
         if (targetItem is null)
@@ -2448,15 +2241,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (TryGetLastInsertionContainer(listBox, out var lastContainer) && lastContainer is not null)
             {
                 var lastTop = lastContainer.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0));
-=======
-        var targetItem = container?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(point);
-
-        if (targetItem is null)
-        {
-            if (TryGetLastInsertionContainer(out var lastContainer))
-            {
-                var lastTop = lastContainer.TransformToAncestor(ActiveTodoListBox).Transform(new WpfPoint(0, 0));
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
                 if (point.Y >= lastTop.Y + (lastContainer.ActualHeight * 0.5))
                 {
                     _lastInsertionTargetContainer = lastContainer;
@@ -2470,21 +2254,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-<<<<<<< HEAD
         if (targetItem == _draggedTodoItem || targetItem.GroupId != _draggedTodoItem.GroupId || targetItem.IsDone != _draggedTodoItem.IsDone)
-=======
-        if (targetItem == _draggedTodoItem || targetItem.GroupId != _draggedTodoItem.GroupId)
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
         {
             ClearInsertionFeedback();
             return;
         }
 
-<<<<<<< HEAD
         container ??= listBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem;
-=======
-        container ??= ActiveTodoListBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem;
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
         if (container is null)
         {
             ClearInsertionFeedback();
@@ -2531,7 +2307,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _lastInsertionTargetContainer = null;
     }
 
-<<<<<<< HEAD
     private bool TryGetLastInsertionContainer(ListBox listBox, out ListBoxItem? container)
     {
         container = null;
@@ -2543,18 +2318,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _draggedTodoItem is not null &&
                 todo.GroupId == _draggedTodoItem.GroupId &&
                 todo.IsDone == _draggedTodoItem.IsDone)
-=======
-    private bool TryGetLastInsertionContainer(out ListBoxItem? container)
-    {
-        container = null;
-
-        for (var i = ActiveTodoListBox.Items.Count - 1; i >= 0; i--)
-        {
-            if (ActiveTodoListBox.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem itemContainer &&
-                itemContainer.DataContext is TodoItem todo &&
-                _draggedTodoItem is not null &&
-                todo.GroupId == _draggedTodoItem.GroupId)
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
             {
                 container = itemContainer;
                 return true;
@@ -3358,30 +3121,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         return changed;
-    }
-
-    private List<TodoItem> GetGroupTodosInCurrentOrder(string groupId)
-    {
-        var groupTodos = AllTodos.Where(t => t.GroupId == groupId).ToList();
-        IEnumerable<TodoItem> ordered = _currentSortMode switch
-        {
-            SortMode.Created => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.CreatedAt).ThenBy(t => t.SortOrder),
-            SortMode.Name => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.Text, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.CreatedAt),
-            SortMode.Priority => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => PriorityRank(t.Priority)).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.CreatedAt),
-            SortMode.Manual => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.SortOrder),
-            _ => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.CreatedAt)
-        };
-
-        return ordered.ToList();
-    }
-
-    private void SnapCurrentOrderToManual(string groupId)
-    {
-        var ordered = GetGroupTodosInCurrentOrder(groupId);
-        for (var i = 0; i < ordered.Count; i++)
-        {
-            ordered[i].SortOrder = i;
-        }
     }
 
     private bool MatchesCurrentFilter(TodoItem todo)

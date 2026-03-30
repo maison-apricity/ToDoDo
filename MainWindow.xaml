@@ -774,7 +774,6 @@
                         </Border>
                         </StackPanel>
 
-<<<<<<< HEAD
                         <Grid x:Name="SelectionHostGrid" Grid.Row="4" Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" PreviewMouseLeftButtonDown="SelectionHostGrid_PreviewMouseLeftButtonDown" PreviewMouseMove="SelectionHostGrid_PreviewMouseMove" PreviewMouseLeftButtonUp="SelectionHostGrid_PreviewMouseLeftButtonUp">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*"/>
@@ -804,23 +803,6 @@
                                             </ItemsPanelTemplate>
                                         </ListBox.ItemsPanel>
 <ListBox.ItemContainerStyle>
-=======
-                        <Grid x:Name="SelectionHostGrid" Grid.Row="4">
-                            <ListBox x:Name="ActiveTodoListBox"
-                                     ItemsSource="{Binding VisibleTodos}"
-                                     SelectionMode="Extended"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     HorizontalContentAlignment="Stretch"
-                                     Foreground="{StaticResource TextPrimaryBrush}"
-                                     PreviewMouseLeftButtonDown="ActiveTodoListBox_PreviewMouseLeftButtonDown"
-                                     PreviewMouseMove="ActiveTodoListBox_PreviewMouseMove"
-                                     PreviewMouseLeftButtonUp="ActiveTodoListBox_PreviewMouseLeftButtonUp"
-                                     DragOver="ActiveTodoListBox_DragOver"
-                                     Drop="ActiveTodoListBox_Drop"
-                                     AllowDrop="True">
-                                <ListBox.ItemContainerStyle>
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="Margin" Value="0,0,0,8"/>
                                         <Setter Property="Padding" Value="0"/>
@@ -1033,18 +1015,13 @@
                                                     </StackPanel>
                                                 </Grid>
 
-<<<<<<< HEAD
                                                 <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="18" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." Tag="DragHandle" PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
-=======
-                                                <TextBlock Grid.Column="3" Text="⋮⋮" Foreground="#95A3C4" FontSize="20" Margin="0,0,0,0" VerticalAlignment="Center" Cursor="SizeAll" ToolTip="드래그로 순서를 바꿀 수 있습니다." Tag="DragHandle" PreviewMouseLeftButtonDown="TodoDragHandle_PreviewMouseLeftButtonDown" PreviewMouseMove="TodoDragHandle_PreviewMouseMove"/>
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                                     </ListBox>
 
-<<<<<<< HEAD
                                     <Border x:Name="EmptyPlaceholderCard" Visibility="Collapsed"/>
 
                                     <Canvas x:Name="SelectionOverlayCanvas"
@@ -1403,21 +1380,6 @@
                                     </Button>
                                 </Border>
                             </Grid>
-=======
-<Border x:Name="EmptyPlaceholderCard" Visibility="Collapsed"/>
-
-                            <Canvas x:Name="SelectionOverlayCanvas"
-                                    IsHitTestVisible="False"
-                                    Panel.ZIndex="35">
-                                <Rectangle x:Name="SelectionRubberBand"
-                                           Visibility="Collapsed"
-                                           RadiusX="10"
-                                           RadiusY="10"
-                                           Stroke="#8EA0FF"
-                                           StrokeThickness="1.2"
-                                           Fill="#2B7287FF"/>
-                            </Canvas>
->>>>>>> 01ba02feb879f6945b26933dc2688e72156df5ca
                         </Grid>
                 </Border>
             </Grid>

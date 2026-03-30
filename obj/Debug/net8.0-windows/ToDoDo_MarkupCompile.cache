@@ -1,5 +1,5 @@
 ﻿ToDoDo
-1.0.0.0
+
 
 winexe
 C#
@@ -12,9 +12,9 @@ TRACE;DEBUG;NET;NET8_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR
 C:\Users\Choi\Downloads\Programs\ToDoDo\App.xaml
 4-94747167
 141584073878
-23-1705683964
+211306004875
 207-1321600798
 ArchiveWindow.xaml;MainWindow.xaml;MoveTodoToGroupWindow.xaml;SettingsWindow.xaml;
 
-True
+False
 
