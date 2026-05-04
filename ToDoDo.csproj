@@ -11,16 +11,15 @@
     <ApplicationIcon>assets\ToDoDo.ico</ApplicationIcon>
   </PropertyGroup>
 
-
+  <!--
+    Runtime packaging policy:
+    - assets are compiled into the WPF assembly as Resource items.
+    - No assets folder is required next to the final exe at runtime.
+    - This makes single-file publish much cleaner and avoids path-search hacks.
+  -->
   <ItemGroup>
-    <Content Include="assets\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="fonts\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+    <None Remove="assets\**\*" />
+    <Resource Include="assets\**\*" />
   </ItemGroup>
 
 </Project>

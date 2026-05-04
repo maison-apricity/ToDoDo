@@ -40,6 +40,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isDeleteOverlayVisible;
     private bool _isSettingsOpen;
     private bool _isPinnedToDesktop = true;
+    private bool _isAllGroupsView;
     private bool _areCompletedDetailsCollapsed = true;
     private bool _didApplyStartupHide;
     private bool _allowRealClose;
@@ -65,12 +66,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private List<DeletedTodoInfo> _lastDeletedTodos = new();
     private double _lastVisibleSidebarWidth = 220;
     private TodoItem? _inlineDueDateTodo;
+    private bool _isSynchronizingDueDateCalendar;
     private const double HiddenMainMinWidth = 620;
     private readonly DispatcherTimer _dragPreviewTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly DispatcherTimer _windowStateSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private bool _isDragPreviewVisible;
     private ListBoxItem? _lastInsertionTargetContainer;
     private bool _lastInsertionAfter;
+    private ListBoxItem? _lastGroupInsertionTargetContainer;
+    private bool _lastGroupInsertionAfter;
     private bool _isRubberBandCandidate;
     private bool _isRubberBandSelecting;
     private WpfPoint _rubberBandStartPoint;
@@ -153,6 +157,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             PersistGroupUiState(_selectedGroup);
             _selectedGroup = value;
+
+            if (value is not null && _isAllGroupsView)
+            {
+                _isAllGroupsView = false;
+                OnPropertyChanged(nameof(IsAllGroupsView));
+                UpdateAllGroupsViewVisuals();
+            }
 
             if (_selectedGroup is not null)
             {
@@ -278,6 +289,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    public bool IsAllGroupsView
+    {
+        get => _isAllGroupsView;
+        private set
+        {
+            if (_isAllGroupsView == value)
+            {
+                return;
+            }
+
+            _isAllGroupsView = value;
+            OnPropertyChanged(nameof(IsAllGroupsView));
+            OnPropertyChanged(nameof(MainTitleText));
+            UpdateAllGroupsViewVisuals();
+        }
+    }
+
     public bool AreCompletedDetailsCollapsed
     {
         get => _areCompletedDetailsCollapsed;
@@ -369,7 +397,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    public string MainTitleText => SelectedGroup is null ? "ToDo List" : $"ToDo List - {SelectedGroup.Name}";
+    public string MainTitleText => IsAllGroupsView ? "ToDo List - 모든 목록" : SelectedGroup is null ? "ToDo List" : $"ToDo List - {SelectedGroup.Name}";
 
     public MainWindow()
     {
@@ -483,6 +511,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         UpdatePinState();
+        UpdateAllGroupsViewVisuals();
         UpdateToolbarLayout();
         UpdateMinimumWindowWidth();
 
@@ -682,9 +711,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             HeaderPinButton.ToolTip = IsPinnedToDesktop ? "바탕화면 고정 중" : "바탕화면에 고정";
         }
 
-        if (HeaderPinIconRotate is not null)
+        if (HeaderPinIconVertical is not null)
         {
-            HeaderPinIconRotate.Angle = IsPinnedToDesktop ? -18 : 0;
+            HeaderPinIconVertical.Visibility = IsPinnedToDesktop ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (HeaderPinIconTilted is not null)
+        {
+            HeaderPinIconTilted.Visibility = IsPinnedToDesktop ? Visibility.Visible : Visibility.Collapsed;
+            HeaderPinIconTilted.Opacity = IsPinnedToDesktop ? 1.0 : 0.82;
         }
 
         if (SettingsPinButton is not null)
@@ -694,6 +729,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SettingsPinButton.Background = IsPinnedToDesktop ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3A568F")!) : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#263246")!);
             SettingsPinButton.Content = IsPinnedToDesktop ? "바탕화면 고정 중" : "바탕화면 고정";
         }
+    }
+
+    private void UpdateAllGroupsViewVisuals()
+    {
+        if (AllGroupsViewButton is null)
+        {
+            return;
+        }
+
+        AllGroupsViewButton.Background = IsAllGroupsView ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3A568F")!) : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#263246")!);
+        AllGroupsViewButton.BorderBrush = IsAllGroupsView ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B7C3FF")!) : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#42526C")!);
+        AllGroupsViewButton.BorderThickness = IsAllGroupsView ? new Thickness(2.2) : new Thickness(1);
+        AllGroupsViewButton.Content = IsAllGroupsView ? "모든 목록 보기 중" : "모든 목록";
     }
 
     private void UpdateSidebarLayout()
@@ -778,6 +826,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OpenArchiveWindowButton_Click(object sender, RoutedEventArgs e)
     {
         OpenArchiveWindow();
+    }
+
+    private void AllGroupsViewButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowAllGroupsView();
+    }
+
+    private void ShowAllGroupsView()
+    {
+        PersistGroupUiState(_selectedGroup);
+        _selectedGroup = null;
+
+        if (GroupListBox is not null)
+        {
+            GroupListBox.SelectedItem = null;
+        }
+
+        IsAllGroupsView = true;
+        if (_currentSortMode == SortMode.Manual)
+        {
+            _currentSortMode = SortMode.DueDate;
+        }
+
+        OnPropertyChanged(nameof(SelectedGroup));
+        OnPropertyChanged(nameof(MainTitleText));
+        UpdateFilterButtonLabel();
+        UpdateActionButtonLabels();
+        RefreshVisibleTodos();
+        SaveState();
     }
 
     private void AddGroupButton_Click(object sender, RoutedEventArgs e)
@@ -979,6 +1056,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ShowComposer()
     {
+        if (SelectedGroup is null)
+        {
+            SelectedGroup = Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
+        }
+
+        if (SelectedGroup is null)
+        {
+            return;
+        }
+
         if (!IsComposerVisible)
         {
             PrepareDraftForNewTodo();
@@ -1064,22 +1151,44 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _inlineDueDateTodo = null;
-        DueDatePopup.PlacementTarget = sender as UIElement;
-        DueDateCalendar.SelectedDate = DraftDueDate ?? DateTime.Today;
+        OpenDueDatePopup(sender as UIElement, DraftDueDate ?? DateTime.Today);
+    }
+
+    private void OpenDueDatePopup(UIElement? placementTarget, DateTime selectedDate)
+    {
+        DueDatePopup.PlacementTarget = placementTarget;
+
+        try
+        {
+            _isSynchronizingDueDateCalendar = true;
+            DueDateCalendar.DisplayDate = selectedDate.Date;
+            DueDateCalendar.SelectedDate = selectedDate.Date;
+        }
+        finally
+        {
+            _isSynchronizingDueDateCalendar = false;
+        }
+
         DueDatePopup.IsOpen = true;
     }
 
     private void DueDateCalendar_SelectedDatesChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isSynchronizingDueDateCalendar)
+        {
+            return;
+        }
+
         if (DueDateCalendar.SelectedDate.HasValue)
         {
             if (_inlineDueDateTodo is not null)
             {
-                _inlineDueDateTodo.EditDueDate = DueDateCalendar.SelectedDate.Value;
+                _inlineDueDateTodo.EditUseDueDate = true;
+                _inlineDueDateTodo.EditDueDate = DueDateCalendar.SelectedDate.Value.Date;
             }
             else
             {
-                DraftDueDate = DueDateCalendar.SelectedDate.Value;
+                DraftDueDate = DueDateCalendar.SelectedDate.Value.Date;
             }
         }
 
@@ -1195,7 +1304,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SortMode.DueDate => SortMode.Created,
             SortMode.Created => SortMode.Name,
             SortMode.Name => SortMode.Priority,
-            SortMode.Priority => SortMode.Manual,
+            SortMode.Priority when !IsAllGroupsView => SortMode.Manual,
             _ => SortMode.DueDate
         };
 
@@ -1663,9 +1772,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _inlineDueDateTodo = todo;
-        DueDatePopup.PlacementTarget = sender as UIElement;
-        DueDateCalendar.SelectedDate = todo.EditDueDate ?? DateTime.Today;
-        DueDatePopup.IsOpen = true;
+        OpenDueDatePopup(sender as UIElement, todo.EditDueDate ?? DateTime.Today);
     }
 
 
@@ -1978,7 +2085,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void TodoListBox_DragOver(object sender, WpfDragEventArgs e)
     {
-        if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
+        if (IsAllGroupsView || _currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
         {
             ClearInsertionFeedback();
             e.Effects = DragDropEffects.None;
@@ -2005,7 +2112,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
+            if (IsAllGroupsView || _currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
             {
                 return;
             }
@@ -2305,6 +2412,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InsertionPreviewPopup.IsOpen = false;
         _lastInsertionTargetContainer = null;
+        _lastGroupInsertionTargetContainer = null;
     }
 
     private bool TryGetLastInsertionContainer(ListBox listBox, out ListBoxItem? container)
@@ -2401,56 +2509,248 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         finally
         {
             _draggedGroup = null;
+            ClearGroupInsertionFeedback();
         }
     }
 
     private void GroupListBox_DragOver(object sender, WpfDragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(typeof(TaskGroup)) ? DragDropEffects.Move : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private void GroupListBox_Drop(object sender, WpfDragEventArgs e)
-    {
-        if (!e.Data.GetDataPresent(typeof(TaskGroup)))
+        if (!e.Data.GetDataPresent(typeof(TaskGroup)) || sender is not ListBox listBox)
         {
+            e.Effects = DragDropEffects.None;
+            ClearGroupInsertionFeedback();
+            e.Handled = true;
             return;
         }
 
         var source = e.Data.GetData(typeof(TaskGroup)) as TaskGroup;
-        if (source is null)
+        if (source is null || !Groups.Contains(source))
+        {
+            e.Effects = DragDropEffects.None;
+            ClearGroupInsertionFeedback();
+            e.Handled = true;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        UpdateGroupDropInsertionFeedback(listBox, e.GetPosition(listBox), e.OriginalSource as DependencyObject);
+        e.Handled = true;
+    }
+
+    private void GroupListBox_DragLeave(object sender, WpfDragEventArgs e)
+    {
+        if (!IsMouseActuallyOver(GroupListBox))
+        {
+            ClearGroupInsertionFeedback();
+        }
+    }
+
+    private void GroupListBox_Drop(object sender, WpfDragEventArgs e)
+    {
+        try
+        {
+            if (!e.Data.GetDataPresent(typeof(TaskGroup)) || sender is not ListBox listBox)
+            {
+                return;
+            }
+
+            var source = e.Data.GetData(typeof(TaskGroup)) as TaskGroup;
+            if (source is null || !Groups.Contains(source))
+            {
+                return;
+            }
+
+            var point = e.GetPosition(listBox);
+            var ordered = Groups.OrderBy(g => g.SortOrder).ToList();
+            var sourceIndex = ordered.IndexOf(source);
+            if (sourceIndex < 0)
+            {
+                return;
+            }
+
+            var rawInsertIndex = GetGroupRawInsertIndex(listBox, point, e.OriginalSource as DependencyObject, ordered);
+            ordered.RemoveAt(sourceIndex);
+
+            if (rawInsertIndex > sourceIndex)
+            {
+                rawInsertIndex--;
+            }
+
+            var insertIndex = Math.Clamp(rawInsertIndex, 0, ordered.Count);
+            ordered.Insert(insertIndex, source);
+
+            ApplyGroupOrder(ordered);
+            SelectedGroup = source;
+            SaveState();
+            e.Handled = true;
+        }
+        finally
+        {
+            ClearGroupInsertionFeedback();
+            _draggedGroup = null;
+        }
+    }
+
+    private int GetGroupRawInsertIndex(ListBox listBox, WpfPoint point, DependencyObject? originalSource, IList<TaskGroup> ordered)
+    {
+        var container = GetAncestor<ListBoxItem>(originalSource);
+        var target = container?.DataContext as TaskGroup ?? GetItemFromPoint<TaskGroup>(point, listBox);
+
+        if (target is null)
+        {
+            if (TryGetLastGroupInsertionContainer(listBox, out var lastContainer) && lastContainer is not null)
+            {
+                var lastTop = lastContainer.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0));
+                if (point.Y >= lastTop.Y + (lastContainer.ActualHeight * 0.5))
+                {
+                    return ordered.Count;
+                }
+            }
+
+            return ordered.Count;
+        }
+
+        var index = ordered.IndexOf(target);
+        if (index < 0)
+        {
+            return ordered.Count;
+        }
+
+        container ??= listBox.ItemContainerGenerator.ContainerFromItem(target) as ListBoxItem;
+        if (container is null)
+        {
+            return index;
+        }
+
+        var pos = point;
+        try
+        {
+            pos = Mouse.GetPosition(container);
+        }
+        catch
+        {
+            // point 값으로 fallback합니다.
+        }
+
+        return pos.Y > container.ActualHeight / 2.0 ? index + 1 : index;
+    }
+
+    private void ApplyGroupOrder(IList<TaskGroup> ordered)
+    {
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            ordered[i].SortOrder = i;
+
+            var currentIndex = Groups.IndexOf(ordered[i]);
+            if (currentIndex >= 0 && currentIndex != i)
+            {
+                Groups.Move(currentIndex, i);
+            }
+        }
+    }
+
+    private void UpdateGroupDropInsertionFeedback(ListBox listBox, WpfPoint point, DependencyObject? originalSource)
+    {
+        if (_draggedGroup is null)
+        {
+            ClearGroupInsertionFeedback();
+            return;
+        }
+
+        var container = GetAncestor<ListBoxItem>(originalSource);
+        var targetGroup = container?.DataContext as TaskGroup ?? GetItemFromPoint<TaskGroup>(point, listBox);
+
+        if (targetGroup is null)
+        {
+            if (TryGetLastGroupInsertionContainer(listBox, out var lastContainer) && lastContainer is not null)
+            {
+                var lastTop = lastContainer.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0));
+                if (point.Y >= lastTop.Y + (lastContainer.ActualHeight * 0.5))
+                {
+                    _lastGroupInsertionTargetContainer = lastContainer;
+                    _lastGroupInsertionAfter = true;
+                    UpdateGroupInsertionPreviewPosition(lastContainer, true);
+                    return;
+                }
+            }
+
+            ClearGroupInsertionFeedback();
+            return;
+        }
+
+        container ??= listBox.ItemContainerGenerator.ContainerFromItem(targetGroup) as ListBoxItem;
+        if (container is null)
+        {
+            ClearGroupInsertionFeedback();
+            return;
+        }
+
+        var itemPos = Mouse.GetPosition(container);
+        var after = itemPos.Y > container.ActualHeight / 2.0;
+
+        if (ReferenceEquals(_lastGroupInsertionTargetContainer, container) && _lastGroupInsertionAfter == after)
+        {
+            UpdateGroupInsertionPreviewPosition(container, after);
+            return;
+        }
+
+        _lastGroupInsertionTargetContainer = container;
+        _lastGroupInsertionAfter = after;
+        UpdateGroupInsertionPreviewPosition(container, after);
+    }
+
+    private void UpdateGroupInsertionPreviewPosition(ListBoxItem container, bool after)
+    {
+        if (RootChrome is null)
         {
             return;
         }
 
-        var ordered = Groups.OrderBy(g => g.SortOrder).ToList();
-        ordered.Remove(source);
+        const double visualGapHalf = 4.0; // 그룹 ListBoxItem bottom margin(8)의 중앙
+        var topLeft = container.TransformToAncestor(RootChrome).Transform(new WpfPoint(0, 0));
+        var markerWidth = Math.Max(110, container.ActualWidth - 24);
+        var markerHalfHeight = InsertionPreviewMarker.Height / 2.0;
+        var boundaryY = after ? topLeft.Y + container.ActualHeight : topLeft.Y;
+        var centerY = after ? boundaryY + visualGapHalf : boundaryY - visualGapHalf;
 
-        var target = GetItemFromPoint<TaskGroup>(e.GetPosition(GroupListBox), GroupListBox);
-        var insertIndex = ordered.Count;
-        if (target is not null)
+        InsertionPreviewMarker.Width = markerWidth;
+        InsertionPreviewPopup.HorizontalOffset = topLeft.X + ((container.ActualWidth - markerWidth) / 2.0);
+        InsertionPreviewPopup.VerticalOffset = centerY - markerHalfHeight;
+        InsertionPreviewPopup.IsOpen = true;
+    }
+
+    private void ClearGroupInsertionFeedback()
+    {
+        InsertionPreviewPopup.IsOpen = false;
+        _lastGroupInsertionTargetContainer = null;
+    }
+
+    private bool TryGetLastGroupInsertionContainer(ListBox listBox, out ListBoxItem? container)
+    {
+        container = null;
+
+        for (var i = listBox.Items.Count - 1; i >= 0; i--)
         {
-            insertIndex = ordered.IndexOf(target);
-            if (insertIndex < 0) insertIndex = ordered.Count;
-            else
+            if (listBox.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem itemContainer &&
+                itemContainer.DataContext is TaskGroup)
             {
-                var container = GroupListBox.ItemContainerGenerator.ContainerFromItem(target) as ListBoxItem;
-                if (container is not null)
-                {
-                    var pos = e.GetPosition(container);
-                    if (pos.Y > container.ActualHeight / 2) insertIndex++;
-                }
+                container = itemContainer;
+                return true;
             }
         }
 
-        if (insertIndex > ordered.Count) insertIndex = ordered.Count;
-        ordered.Insert(insertIndex, source);
-        for (var i = 0; i < ordered.Count; i++) ordered[i].SortOrder = i;
+        return false;
+    }
 
-        Groups.Clear();
-        foreach (var g in ordered) Groups.Add(g);
-        SelectedGroup = source;
-        SaveState();
+    private static bool IsMouseActuallyOver(FrameworkElement? element)
+    {
+        if (element is null || !element.IsVisible)
+        {
+            return false;
+        }
+
+        var point = Mouse.GetPosition(element);
+        return point.X >= 0 && point.Y >= 0 && point.X <= element.ActualWidth && point.Y <= element.ActualHeight;
     }
 
     private void GroupListBox_KeyDown(object sender, WpfKeyEventArgs e)
@@ -2942,7 +3242,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ArchivedVisibleTodos.Add(archived);
         }
 
-        if (SelectedGroup is null)
+        if (!IsAllGroupsView && SelectedGroup is null)
         {
             SummaryText = "전체 0 · 진행 0 · 완료 0";
             IsEmptyVisible = true;
@@ -2954,13 +3254,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var groupTodos = AllTodos.Where(t => t.GroupId == SelectedGroup.Id && !t.IsArchived).ToList();
+        var groupOrder = Groups.ToDictionary(g => g.Id, g => g.SortOrder);
+        var groupTodos = IsAllGroupsView
+            ? AllTodos.Where(t => !t.IsArchived).ToList()
+            : AllTodos.Where(t => t.GroupId == SelectedGroup!.Id && !t.IsArchived).ToList();
+
         IEnumerable<TodoItem> ordered = _currentSortMode switch
         {
             SortMode.Created => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.CreatedAt).ThenBy(t => t.SortOrder),
             SortMode.Name => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.Text, StringComparer.CurrentCultureIgnoreCase).ThenBy(t => t.CreatedAt),
             SortMode.Priority => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => PriorityRank(t.Priority)).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.CreatedAt),
-            SortMode.Manual => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.SortOrder),
+            SortMode.Manual when !IsAllGroupsView => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.SortOrder),
+            SortMode.Manual => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => groupOrder.TryGetValue(t.GroupId, out var order) ? order : int.MaxValue).ThenBy(t => t.SortOrder),
             _ => groupTodos.OrderBy(t => t.IsDone).ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.CreatedAt)
         };
 
@@ -2979,7 +3284,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var total = groupTodos.Count;
         var completed = groupTodos.Count(t => t.IsDone);
         var remaining = total - completed;
-        SummaryText = $"전체 {total} · 진행 {remaining} · 완료 {completed}";
+        SummaryText = IsAllGroupsView
+            ? $"모든 그룹 · 전체 {total} · 진행 {remaining} · 완료 {completed}"
+            : $"전체 {total} · 진행 {remaining} · 완료 {completed}";
         IsEmptyVisible = VisibleTodos.Count == 0;
         OnPropertyChanged(nameof(HasCompletedTodos));
         OnPropertyChanged(nameof(CompletedCountText));
