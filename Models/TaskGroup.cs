@@ -80,5 +80,7 @@ public sealed class TaskGroup : ObservableObject
         }
         IsEditing = false;
     }
+
+    public override string ToString() => Name;
 }
 

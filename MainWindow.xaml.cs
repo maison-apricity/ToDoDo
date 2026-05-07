@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -50,6 +50,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private DateTime? _draftDueDate = DateTime.Today;
     private TodoPriority _draftPriority = TodoPriority.Normal;
     private TodoRepeat _draftRepeat = TodoRepeat.None;
+    private TaskGroup? _draftTargetGroup;
     private string _summaryText = "전체 0 · 진행 0 · 완료 0";
     private string _deleteOverlayMessage = string.Empty;
     private bool _isEmptyVisible = true;
@@ -73,6 +74,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isDragPreviewVisible;
     private ListBoxItem? _lastInsertionTargetContainer;
     private bool _lastInsertionAfter;
+    private ListBox? _dragAutoScrollListBox;
+    private IntPtr _dragMouseWheelHook = IntPtr.Zero;
+    private LowLevelMouseProc? _dragMouseWheelHookProc;
     private ListBoxItem? _lastGroupInsertionTargetContainer;
     private bool _lastGroupInsertionAfter;
     private bool _isRubberBandCandidate;
@@ -145,6 +149,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         public required string GroupId { get; init; }
     }
 
+    private sealed class DropViewportAnchor
+    {
+        public required double VerticalOffset { get; init; }
+        public TodoItem? AnchorItem { get; init; }
+        public double? AnchorTop { get; init; }
+    }
+
     public TaskGroup? SelectedGroup
     {
         get => _selectedGroup;
@@ -153,6 +164,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (_selectedGroup == value)
             {
                 return;
+            }
+
+            if (IsComposerVisible && !ReferenceEquals(_selectedGroup, value))
+            {
+                CancelComposerDraft();
             }
 
             PersistGroupUiState(_selectedGroup);
@@ -167,6 +183,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (_selectedGroup is not null)
             {
+                DraftTargetGroup = _selectedGroup;
                 _currentFilter = FromInt(_selectedGroup.SavedFilterMode, FilterMode.All);
                 _currentSortMode = FromInt(_selectedGroup.SavedSortMode, SortMode.Created);
                 _areCompletedDetailsCollapsed = _selectedGroup.SavedCompletedCollapsed;
@@ -301,6 +318,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             _isAllGroupsView = value;
             OnPropertyChanged(nameof(IsAllGroupsView));
+            OnPropertyChanged(nameof(IsComposerGroupPickerVisible));
             OnPropertyChanged(nameof(MainTitleText));
             UpdateAllGroupsViewVisuals();
         }
@@ -339,6 +357,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     public bool IsDraftTitleEmpty => string.IsNullOrWhiteSpace(_draftTitle);
+
+    public TaskGroup? DraftTargetGroup
+    {
+        get => _draftTargetGroup;
+        set
+        {
+            if (_draftTargetGroup == value)
+            {
+                return;
+            }
+
+            _draftTargetGroup = value;
+            OnPropertyChanged(nameof(DraftTargetGroup));
+        }
+    }
+
+    public bool IsComposerGroupPickerVisible => IsAllGroupsView && _editingTodo is null;
 
     public bool DraftUseDueDate
     {
@@ -422,6 +457,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             Groups.Add(new TaskGroup { Name = "기본", SortOrder = 0 });
         }
+
+        _draftTargetGroup = Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
 
         _isSidebarVisible = _state.Settings.IsSidebarVisible;
         _isPinnedToDesktop = _state.Settings.IsPinnedToDesktop;
@@ -835,6 +872,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ShowAllGroupsView()
     {
+        if (IsComposerVisible)
+        {
+            CancelComposerDraft();
+        }
+
         PersistGroupUiState(_selectedGroup);
         _selectedGroup = null;
 
@@ -844,10 +886,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         IsAllGroupsView = true;
-        if (_currentSortMode == SortMode.Manual)
-        {
-            _currentSortMode = SortMode.DueDate;
-        }
+        DraftTargetGroup = null;
 
         OnPropertyChanged(nameof(SelectedGroup));
         OnPropertyChanged(nameof(MainTitleText));
@@ -920,6 +959,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         Groups.Remove(groupToDelete);
+        if (DraftTargetGroup == groupToDelete)
+        {
+            DraftTargetGroup = Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
+        }
+
         SelectedGroup = Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
         IsDeleteOverlayVisible = false;
         RefreshVisibleTodos();
@@ -986,6 +1030,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         group.BeginEdit();
+        FocusGroupRenameTextBoxForGroup(group);
+    }
+
+    private void FocusGroupRenameTextBoxForGroup(TaskGroup group)
+    {
+        Dispatcher.BeginInvoke((Action)(() =>
+        {
+            GroupListBox.ScrollIntoView(group);
+            if (GroupListBox.ItemContainerGenerator.ContainerFromItem(group) is not ListBoxItem container)
+            {
+                return;
+            }
+
+            var textBox = FindDescendant<WpfTextBox>(container);
+            if (textBox is not null && textBox.IsVisible)
+            {
+                FocusRenameTextBox(textBox);
+            }
+        }), DispatcherPriority.ContextIdle);
     }
 
     private void GroupRenameTextBox_Loaded(object sender, RoutedEventArgs e)
@@ -1056,12 +1119,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ShowComposer()
     {
-        if (SelectedGroup is null)
+        if (!IsAllGroupsView && SelectedGroup is null)
         {
             SelectedGroup = Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
         }
 
-        if (SelectedGroup is null)
+        if (IsAllGroupsView)
+        {
+            if (!Groups.Any())
+            {
+                return;
+            }
+        }
+        else if (ResolveDraftTargetGroup() is null)
         {
             return;
         }
@@ -1087,12 +1157,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void PrepareDraftForNewTodo()
     {
-        if (SelectedGroup is null)
+        if (IsAllGroupsView)
+        {
+            if (!Groups.Any())
+            {
+                return;
+            }
+        }
+        else if (ResolveDraftTargetGroup() is null)
         {
             return;
         }
 
         _editingTodo = null;
+        DraftTargetGroup = IsAllGroupsView ? null : ResolveDraftTargetGroup();
+        OnPropertyChanged(nameof(IsComposerGroupPickerVisible));
         IsComposerVisible = true;
         DraftTitle = string.Empty;
         DraftUseDueDate = _state.Settings.DefaultUseDueDate;
@@ -1107,19 +1186,66 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
 
+    private TaskGroup? ResolveDraftTargetGroup()
+    {
+        if (IsAllGroupsView)
+        {
+            return DraftTargetGroup is not null && Groups.Contains(DraftTargetGroup)
+                ? DraftTargetGroup
+                : null;
+        }
+
+        return SelectedGroup ?? Groups.OrderBy(g => g.SortOrder).FirstOrDefault();
+    }
+
     private void FocusComposer()
     {
         Dispatcher.BeginInvoke(() =>
         {
+            if (IsComposerGroupPickerVisible && DraftTargetGroup is null && ComposerGroupComboBox is not null)
+            {
+                ComposerGroupComboBox.Focus();
+                return;
+            }
+
             ComposerTitleTextBox.Focus();
             ComposerTitleTextBox.SelectAll();
         });
     }
 
+    private void FocusComposerGroupPicker()
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (ComposerGroupComboBox is null)
+            {
+                return;
+            }
+
+            ComposerGroupComboBox.Focus();
+            ComposerGroupComboBox.IsDropDownOpen = true;
+        });
+    }
+
     private void CancelComposerButton_Click(object sender, RoutedEventArgs e)
     {
+        CancelComposerDraft();
+    }
+
+    private void CancelComposerDraft()
+    {
         DueDatePopup.IsOpen = false;
-        PrepareDraftForNewTodo();
+        _editingTodo = null;
+        DraftTitle = string.Empty;
+        DraftUseDueDate = _state.Settings.DefaultUseDueDate;
+        DraftDueDate = DateTime.Today;
+        _draftPriority = _state.Settings.DefaultPriority;
+        _draftRepeat = _state.Settings.DefaultRepeat;
+        DraftTargetGroup = IsAllGroupsView ? null : SelectedGroup;
+        OnPropertyChanged(nameof(DraftPriorityText));
+        OnPropertyChanged(nameof(DraftRepeatText));
+        OnPropertyChanged(nameof(DraftDueDateText));
+        OnPropertyChanged(nameof(IsComposerGroupPickerVisible));
         IsComposerVisible = false;
     }
 
@@ -1137,8 +1263,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else if (e.Key == Key.Escape)
         {
-            PrepareDraftForNewTodo();
-            IsComposerVisible = false;
+            CancelComposerDraft();
             e.Handled = true;
         }
     }
@@ -1223,10 +1348,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CreateTodoFromDraft()
     {
-        if (SelectedGroup is null)
+        var targetGroup = ResolveDraftTargetGroup();
+        if (targetGroup is null)
         {
+            FocusComposerGroupPicker();
             return;
         }
+
+        DraftTargetGroup = targetGroup;
 
         var title = string.IsNullOrWhiteSpace(DraftTitle) ? "새 할 일" : DraftTitle.Trim();
         var due = DraftUseDueDate ? DraftDueDate : null;
@@ -1245,10 +1374,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else
         {
-            var nextSort = AllTodos.Where(t => t.GroupId == SelectedGroup.Id).Select(t => t.SortOrder).DefaultIfEmpty(-1).Max() + 1;
+            var nextSort = AllTodos.Where(t => t.GroupId == targetGroup.Id).Select(t => t.SortOrder).DefaultIfEmpty(-1).Max() + 1;
             todo = new TodoItem
             {
-                GroupId = SelectedGroup.Id,
+                GroupId = targetGroup.Id,
                 Text = title,
                 Priority = _draftPriority,
                 Repeat = _draftRepeat,
@@ -1304,7 +1433,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SortMode.DueDate => SortMode.Created,
             SortMode.Created => SortMode.Name,
             SortMode.Name => SortMode.Priority,
-            SortMode.Priority when !IsAllGroupsView => SortMode.Manual,
+            SortMode.Priority => SortMode.Manual,
             _ => SortMode.DueDate
         };
 
@@ -1412,6 +1541,173 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ApplyGroupPartitionOrder(group.Id);
         }
     }
+
+    private void SlowScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not DependencyObject source)
+        {
+            return;
+        }
+
+        var scrollViewer = sender as ScrollViewer ?? FindDescendant<ScrollViewer>(source);
+        if (scrollViewer is null)
+        {
+            return;
+        }
+
+        var notches = e.Delta / 120.0;
+        if (Math.Abs(notches) < 0.01)
+        {
+            return;
+        }
+
+        const double pixelsPerWheelNotch = 34.0;
+        var nextOffset = scrollViewer.VerticalOffset - (notches * pixelsPerWheelNotch);
+        nextOffset = Math.Clamp(nextOffset, 0.0, scrollViewer.ScrollableHeight);
+
+        scrollViewer.ScrollToVerticalOffset(nextOffset);
+        e.Handled = true;
+    }
+
+    private static double GetListBoxVerticalOffset(ListBox? listBox)
+    {
+        var scrollViewer = listBox is null ? null : FindDescendant<ScrollViewer>(listBox);
+        return scrollViewer?.VerticalOffset ?? 0.0;
+    }
+
+    private static void RestoreListBoxVerticalOffset(ListBox? listBox, double offset)
+    {
+        var scrollViewer = listBox is null ? null : FindDescendant<ScrollViewer>(listBox);
+        if (scrollViewer is null || scrollViewer.ScrollableHeight <= 0)
+        {
+            return;
+        }
+
+        scrollViewer.ScrollToVerticalOffset(Math.Clamp(offset, 0.0, scrollViewer.ScrollableHeight));
+    }
+
+    private void RestoreListBoxVerticalOffsetDeferred(ListBox? listBox, double offset)
+    {
+        if (listBox is null)
+        {
+            return;
+        }
+
+        RestoreListBoxVerticalOffset(listBox, offset);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            RestoreListBoxVerticalOffset(listBox, offset);
+        }, DispatcherPriority.Send);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            RestoreListBoxVerticalOffset(listBox, offset);
+        }, DispatcherPriority.Loaded);
+    }
+
+
+    private DropViewportAnchor CaptureDropViewportAnchor(ListBox? listBox, TodoItem? preferredAnchor)
+    {
+        var anchor = new DropViewportAnchor
+        {
+            VerticalOffset = GetListBoxVerticalOffset(listBox),
+            AnchorItem = preferredAnchor
+        };
+
+        if (listBox is null || preferredAnchor is null)
+        {
+            return anchor;
+        }
+
+        if (listBox.ItemContainerGenerator.ContainerFromItem(preferredAnchor) is not ListBoxItem container)
+        {
+            return anchor;
+        }
+
+        try
+        {
+            return new DropViewportAnchor
+            {
+                VerticalOffset = anchor.VerticalOffset,
+                AnchorItem = preferredAnchor,
+                AnchorTop = container.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0)).Y
+            };
+        }
+        catch
+        {
+            return anchor;
+        }
+    }
+
+    private void RestoreDropViewportAnchorDeferred(ListBox? listBox, DropViewportAnchor? anchor)
+    {
+        if (listBox is null || anchor is null)
+        {
+            return;
+        }
+
+        RestoreDropViewportAnchor(listBox, anchor);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            RestoreDropViewportAnchor(listBox, anchor);
+        }, DispatcherPriority.Send);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            RestoreDropViewportAnchor(listBox, anchor);
+        }, DispatcherPriority.Loaded);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            RestoreDropViewportAnchor(listBox, anchor);
+        }, DispatcherPriority.ContextIdle);
+    }
+
+    private void RestoreDropViewportAnchor(ListBox listBox, DropViewportAnchor anchor)
+    {
+        var scrollViewer = FindDescendant<ScrollViewer>(listBox);
+        if (scrollViewer is null)
+        {
+            return;
+        }
+
+        // First keep the same approximate viewport. This prevents a full reset to
+        // the top even before WPF has regenerated item containers after RefreshVisibleTodos().
+        scrollViewer.ScrollToVerticalOffset(Math.Clamp(anchor.VerticalOffset, 0.0, scrollViewer.ScrollableHeight));
+
+        if (anchor.AnchorItem is null || anchor.AnchorTop is null)
+        {
+            return;
+        }
+
+        listBox.UpdateLayout();
+
+        if (listBox.ItemContainerGenerator.ContainerFromItem(anchor.AnchorItem) is not ListBoxItem container)
+        {
+            return;
+        }
+
+        try
+        {
+            var currentTop = container.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0)).Y;
+            var delta = currentTop - anchor.AnchorTop.Value;
+            if (Math.Abs(delta) < 0.25)
+            {
+                return;
+            }
+
+            var adjustedOffset = scrollViewer.VerticalOffset + delta;
+            scrollViewer.ScrollToVerticalOffset(Math.Clamp(adjustedOffset, 0.0, scrollViewer.ScrollableHeight));
+        }
+        catch
+        {
+            // If the item container is transient during virtualization, keeping the
+            // original vertical offset is still safer than jumping to the top.
+        }
+    }
+
 
     private void TodoCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -1667,6 +1963,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ownerListBox.SelectedItem = todo;
             ownerListBox.ScrollIntoView(todo);
         }
+
+        FocusInlineEditTextBoxForTodo(todo);
+    }
+
+    private void FocusInlineEditTextBoxForTodo(TodoItem todo)
+    {
+        Dispatcher.BeginInvoke((Action)(() =>
+        {
+            var ownerListBox = GetTodoListBoxForItem(todo);
+            if (ownerListBox?.ItemContainerGenerator.ContainerFromItem(todo) is not ListBoxItem container)
+            {
+                ownerListBox?.ScrollIntoView(todo);
+                return;
+            }
+
+            var textBox = FindDescendant<WpfTextBox>(container);
+            if (textBox is not null && textBox.IsVisible)
+            {
+                FocusRenameTextBox(textBox);
+            }
+        }), DispatcherPriority.ContextIdle);
     }
 
 
@@ -1704,6 +2021,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void InlineEditTextBox_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is WpfTextBox textBox && textBox.DataContext is TodoItem todo && todo.IsEditing)
+        {
+            FocusRenameTextBox(textBox);
+        }
+    }
+
+    private void InlineEditTextBox_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (sender is WpfTextBox textBox && textBox.IsVisible && textBox.DataContext is TodoItem todo && todo.IsEditing)
         {
             FocusRenameTextBox(textBox);
         }
@@ -2085,7 +2410,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void TodoListBox_DragOver(object sender, WpfDragEventArgs e)
     {
-        if (IsAllGroupsView || _currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
+        if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
         {
             ClearInsertionFeedback();
             e.Effects = DragDropEffects.None;
@@ -2104,7 +2429,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         e.Effects = DragDropEffects.Move;
         e.Handled = true;
-        UpdateDropInsertionFeedback(listBox, e.GetPosition(listBox), e.OriginalSource as DependencyObject);
+
+        var point = e.GetPosition(listBox);
+        UpdateDropInsertionFeedback(listBox, point, e.OriginalSource as DependencyObject);
         UpdateDragPreviewPosition();
     }
 
@@ -2112,7 +2439,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         try
         {
-            if (IsAllGroupsView || _currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
+            if (_currentSortMode != SortMode.Manual || !e.Data.GetDataPresent(typeof(TodoItem)) || sender is not ListBox listBox)
             {
                 return;
             }
@@ -2123,50 +2450,42 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
+            if (IsAllGroupsView)
+            {
+                DropTodoInAllGroupsView(source, listBox, e);
+                return;
+            }
+
             var groupItems = GetOrderedGroupPartition(source.GroupId, source.IsDone);
             if (groupItems.Count == 0)
             {
                 return;
             }
 
-            var targetContainer = GetAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
-            var targetItem = targetContainer?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(e.GetPosition(listBox), listBox);
-            if (targetItem is not null && targetItem.IsDone != source.IsDone)
+            var sourceIndex = groupItems.IndexOf(source);
+            if (sourceIndex < 0)
             {
-                targetItem = null;
-                targetContainer = null;
+                return;
             }
 
-            groupItems.Remove(source);
-
-            var insertIndex = groupItems.Count;
-            if (targetItem is not null && targetItem.GroupId == source.GroupId)
+            var dropPoint = e.GetPosition(listBox);
+            if (!TryGetTodoInsertionMarker(listBox, dropPoint, e.OriginalSource as DependencyObject, source, out var targetItem, out _, out var insertAfterTarget))
             {
-                insertIndex = groupItems.IndexOf(targetItem);
-                if (insertIndex < 0)
-                {
-                    insertIndex = groupItems.Count;
-                }
-                else
-                {
-                    var container = targetContainer ?? (listBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem);
-                    if (container is not null)
-                    {
-                        var position = e.GetPosition(container);
-                        if (position.Y > container.ActualHeight / 2)
-                        {
-                            insertIndex++;
-                        }
-                    }
-                }
+                return;
             }
 
-            if (insertIndex > groupItems.Count)
+            var viewportAnchor = CaptureDropViewportAnchor(listBox, targetItem);
+            var rawInsertIndex = GetTodoRawInsertIndexForPartition(groupItems, targetItem, insertAfterTarget);
+            groupItems.RemoveAt(sourceIndex);
+
+            if (rawInsertIndex > sourceIndex)
             {
-                insertIndex = groupItems.Count;
+                rawInsertIndex--;
             }
 
+            var insertIndex = Math.Clamp(rawInsertIndex, 0, groupItems.Count);
             groupItems.Insert(insertIndex, source);
+
             if (source.IsDone)
             {
                 ApplyGroupPartitionOrder(source.GroupId, completedOrder: groupItems);
@@ -2177,17 +2496,114 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             RefreshVisibleTodos();
+            RestoreDropViewportAnchorDeferred(listBox, viewportAnchor);
             listBox.SelectedItem = source;
-            listBox.ScrollIntoView(source);
             SaveState();
         }
         finally
         {
             ClearInsertionFeedback();
             HideDragPreview();
+            StopDragAutoScroll();
             _draggedTodoItem = null;
             Mouse.Capture(null);
         }
+    }
+
+    private void DropTodoInAllGroupsView(TodoItem source, ListBox listBox, WpfDragEventArgs e)
+    {
+        var point = e.GetPosition(listBox);
+        var markerFound = TryGetTodoInsertionMarker(listBox, point, e.OriginalSource as DependencyObject, source, out var targetItem, out _, out var insertAfterTarget);
+        if (!markerFound)
+        {
+            return;
+        }
+
+        var viewportAnchor = CaptureDropViewportAnchor(listBox, targetItem);
+        var oldGroupId = source.GroupId;
+        var targetGroupId = ResolveAllGroupsDropTargetGroupId(source, targetItem, listBox);
+        if (string.IsNullOrWhiteSpace(targetGroupId))
+        {
+            return;
+        }
+
+        var affectedGroups = new HashSet<string> { oldGroupId, targetGroupId };
+        var oldGroupItems = GetOrderedGroupPartition(oldGroupId, source.IsDone);
+        var sourceIndex = oldGroupItems.IndexOf(source);
+        if (sourceIndex < 0)
+        {
+            return;
+        }
+
+        List<TodoItem> targetGroupItems;
+        int insertIndex;
+
+        if (targetGroupId == oldGroupId)
+        {
+            targetGroupItems = oldGroupItems;
+            var rawInsertIndex = GetTodoRawInsertIndexForPartition(targetGroupItems, targetItem, insertAfterTarget);
+
+            targetGroupItems.RemoveAt(sourceIndex);
+            if (rawInsertIndex > sourceIndex)
+            {
+                rawInsertIndex--;
+            }
+
+            insertIndex = Math.Clamp(rawInsertIndex, 0, targetGroupItems.Count);
+        }
+        else
+        {
+            targetGroupItems = GetOrderedGroupPartition(targetGroupId, source.IsDone);
+            insertIndex = Math.Clamp(GetTodoRawInsertIndexForPartition(targetGroupItems, targetItem, insertAfterTarget), 0, targetGroupItems.Count);
+            oldGroupItems.RemoveAt(sourceIndex);
+            source.GroupId = targetGroupId;
+        }
+
+        targetGroupItems.Insert(insertIndex, source);
+
+        foreach (var groupId in affectedGroups)
+        {
+            if (groupId == targetGroupId)
+            {
+                if (source.IsDone)
+                {
+                    ApplyGroupPartitionOrder(groupId, completedOrder: targetGroupItems);
+                }
+                else
+                {
+                    ApplyGroupPartitionOrder(groupId, activeOrder: targetGroupItems);
+                }
+            }
+            else
+            {
+                if (source.IsDone)
+                {
+                    ApplyGroupPartitionOrder(groupId, completedOrder: oldGroupItems);
+                }
+                else
+                {
+                    ApplyGroupPartitionOrder(groupId, activeOrder: oldGroupItems);
+                }
+            }
+        }
+
+        RefreshVisibleTodos();
+        RestoreDropViewportAnchorDeferred(listBox, viewportAnchor);
+        listBox.SelectedItem = source;
+        SaveState();
+    }
+
+    private string ResolveAllGroupsDropTargetGroupId(TodoItem source, TodoItem? targetItem, ListBox listBox)
+    {
+        if (targetItem is not null)
+        {
+            return targetItem.GroupId;
+        }
+
+        var items = listBox.Items.OfType<TodoItem>()
+            .Where(t => t.IsDone == source.IsDone && !t.IsArchived)
+            .ToList();
+        return items.LastOrDefault()?.GroupId ?? source.GroupId;
     }
 
     private void TodoDragHandle_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -2203,15 +2619,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (_currentSortMode != SortMode.Manual)
-        {
-            SnapCurrentOrderToManual(todo.GroupId);
-            _currentSortMode = SortMode.Manual;
-            PersistGroupUiState(SelectedGroup);
-            UpdateActionButtonLabels();
-            RefreshVisibleTodos();
-        }
-
+        // Do not switch to manual sort on a simple click.
+        // The mode is converted only after the mouse actually moves far enough
+        // to start a drag operation. This prevents the list from jumping just
+        // because the user clicked the reorder handle while another sort mode is active.
         _draggedTodoItem = todo;
         _dragStartPoint = e.GetPosition(ownerListBox);
         Mouse.Capture(sender as IInputElement);
@@ -2239,6 +2650,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var sourceScrollOffset = GetListBoxVerticalOffset(ownerListBox);
+
+        if (!PrepareManualSortForTodoDrag(_draggedTodoItem))
+        {
+            _draggedTodoItem = null;
+            Mouse.Capture(null);
+            e.Handled = true;
+            return;
+        }
+
+        // The first drag attempt can switch the current sort mode into Manual.
+        // WPF may re-measure the ListBox after that state change and reset the
+        // ScrollViewer to the top before DoDragDrop starts. Keep the user's
+        // current viewport stable so the drag begins from the screen position
+        // where the item was actually grabbed.
+        RestoreListBoxVerticalOffsetDeferred(ownerListBox, sourceScrollOffset);
+
         ShowDragPreview(_draggedTodoItem);
         System.Windows.GiveFeedbackEventHandler feedbackHandler = DragPreviewGiveFeedback;
         System.Windows.QueryContinueDragEventHandler continueHandler = DragPreviewQueryContinueDrag;
@@ -2255,9 +2683,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ownerListBox.QueryContinueDrag -= continueHandler;
             HideDragPreview();
             ClearInsertionFeedback();
+            StopDragAutoScroll();
             Mouse.Capture(null);
         }
     }
+
+    private bool PrepareManualSortForTodoDrag(TodoItem todo)
+    {
+        if (IsAllGroupsView)
+        {
+            if (_currentSortMode == SortMode.Manual)
+            {
+                return true;
+            }
+
+            SnapAllGroupsVisibleOrderToManual();
+            _currentSortMode = SortMode.Manual;
+            UpdateActionButtonLabels();
+            return true;
+        }
+
+        if (SelectedGroup?.Id != todo.GroupId)
+        {
+            return false;
+        }
+
+        if (_currentSortMode == SortMode.Manual)
+        {
+            return true;
+        }
+
+        // Freeze the currently visible order into SortOrder before switching modes.
+        // Because RefreshVisibleTodos() is intentionally not called here, the list does
+        // not jump at drag start; it simply keeps the current visual order and then lets
+        // the user drop the item at the desired position.
+        SnapCurrentOrderToManual(todo.GroupId);
+        _currentSortMode = SortMode.Manual;
+        PersistGroupUiState(SelectedGroup);
+        UpdateActionButtonLabels();
+        return true;
+    }
+
 
 
     private void ShowDragPreview(TodoItem todo)
@@ -2280,6 +2746,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateDragPreviewPosition();
         DragPreviewPopup.IsOpen = true;
         _isDragPreviewVisible = true;
+        InstallDragMouseWheelHook();
         if (!_dragPreviewTimer.IsEnabled)
         {
             _dragPreviewTimer.Start();
@@ -2291,6 +2758,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _dragPreviewTimer.Stop();
         DragPreviewPopup.IsOpen = false;
         _isDragPreviewVisible = false;
+        UninstallDragMouseWheelHook();
     }
 
     private void DragPreviewGiveFeedback(object? sender, WpfGiveFeedbackEventArgs e)
@@ -2340,42 +2808,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var container = GetAncestor<ListBoxItem>(originalSource);
-        var targetItem = container?.DataContext as TodoItem ?? GetItemFromPoint<TodoItem>(point, listBox);
-
-        if (targetItem is null)
-        {
-            if (TryGetLastInsertionContainer(listBox, out var lastContainer) && lastContainer is not null)
-            {
-                var lastTop = lastContainer.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0));
-                if (point.Y >= lastTop.Y + (lastContainer.ActualHeight * 0.5))
-                {
-                    _lastInsertionTargetContainer = lastContainer;
-                    _lastInsertionAfter = true;
-                    UpdateInsertionPreviewPosition(lastContainer, true);
-                    return;
-                }
-            }
-
-            ClearInsertionFeedback();
-            return;
-        }
-
-        if (targetItem == _draggedTodoItem || targetItem.GroupId != _draggedTodoItem.GroupId || targetItem.IsDone != _draggedTodoItem.IsDone)
+        if (!TryGetTodoInsertionMarker(listBox, point, originalSource, _draggedTodoItem, out _, out var container, out var after) || container is null)
         {
             ClearInsertionFeedback();
             return;
         }
-
-        container ??= listBox.ItemContainerGenerator.ContainerFromItem(targetItem) as ListBoxItem;
-        if (container is null)
-        {
-            ClearInsertionFeedback();
-            return;
-        }
-
-        var itemPos = Mouse.GetPosition(container);
-        var after = itemPos.Y > container.ActualHeight / 2;
 
         if (ReferenceEquals(_lastInsertionTargetContainer, container) && _lastInsertionAfter == after)
         {
@@ -2386,6 +2823,174 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _lastInsertionTargetContainer = container;
         _lastInsertionAfter = after;
         UpdateInsertionPreviewPosition(container, after);
+    }
+
+    private bool TryGetTodoInsertionMarker(
+        ListBox listBox,
+        WpfPoint point,
+        DependencyObject? originalSource,
+        TodoItem source,
+        out TodoItem? targetItem,
+        out ListBoxItem? targetContainer,
+        out bool after)
+    {
+        targetItem = null;
+        targetContainer = null;
+        after = false;
+
+        var visibleContainers = GetVisibleTodoContainersForDrop(listBox, source);
+        if (visibleContainers.Count == 0)
+        {
+            return false;
+        }
+
+        var directContainer = GetAncestor<ListBoxItem>(originalSource);
+        if (directContainer?.DataContext is TodoItem directItem && IsTodoEligibleDropMarker(directItem, source))
+        {
+            var directPosition = Mouse.GetPosition(directContainer);
+            targetItem = directItem;
+            targetContainer = directContainer;
+            after = directPosition.Y > directContainer.ActualHeight / 2.0;
+            return true;
+        }
+
+        visibleContainers.Sort(static (a, b) => a.Top.CompareTo(b.Top));
+
+        for (var i = 0; i < visibleContainers.Count; i++)
+        {
+            var current = visibleContainers[i];
+
+            if (point.Y <= current.Top)
+            {
+                targetItem = current.Todo;
+                targetContainer = current.Container;
+                after = false;
+                return true;
+            }
+
+            if (point.Y <= current.Bottom)
+            {
+                targetItem = current.Todo;
+                targetContainer = current.Container;
+                after = point.Y > current.Mid;
+                return true;
+            }
+
+            if (i + 1 < visibleContainers.Count)
+            {
+                var next = visibleContainers[i + 1];
+                if (point.Y < next.Top)
+                {
+                    var gapMid = current.Bottom + ((next.Top - current.Bottom) / 2.0);
+                    if (point.Y <= gapMid)
+                    {
+                        targetItem = current.Todo;
+                        targetContainer = current.Container;
+                        after = true;
+                    }
+                    else
+                    {
+                        targetItem = next.Todo;
+                        targetContainer = next.Container;
+                        after = false;
+                    }
+
+                    return true;
+                }
+            }
+        }
+
+        var last = visibleContainers[^1];
+        targetItem = last.Todo;
+        targetContainer = last.Container;
+        after = true;
+        return true;
+    }
+
+    private List<(ListBoxItem Container, TodoItem Todo, double Top, double Bottom, double Mid)> GetVisibleTodoContainersForDrop(ListBox listBox, TodoItem source)
+    {
+        var containers = new List<(ListBoxItem Container, TodoItem Todo, double Top, double Bottom, double Mid)>();
+
+        for (var i = 0; i < listBox.Items.Count; i++)
+        {
+            if (listBox.ItemContainerGenerator.ContainerFromIndex(i) is not ListBoxItem container ||
+                container.DataContext is not TodoItem todo ||
+                !IsTodoEligibleDropMarker(todo, source) ||
+                container.ActualHeight <= 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                var top = container.TransformToAncestor(listBox).Transform(new WpfPoint(0, 0)).Y;
+                var bottom = top + container.ActualHeight;
+                containers.Add((container, todo, top, bottom, top + (container.ActualHeight / 2.0)));
+            }
+            catch
+            {
+                // 시각 트리에 아직 완전히 붙지 않은 컨테이너는 이번 프레임에서 제외합니다.
+            }
+        }
+
+        return containers;
+    }
+
+    private bool IsTodoEligibleDropMarker(TodoItem candidate, TodoItem source)
+    {
+        if (candidate.IsArchived || candidate.IsDone != source.IsDone)
+        {
+            return false;
+        }
+
+        return IsAllGroupsView || candidate.GroupId == source.GroupId;
+    }
+
+    private int GetTodoRawInsertIndex(
+        ListBox listBox,
+        WpfPoint point,
+        DependencyObject? originalSource,
+        TodoItem source,
+        IList<TodoItem> orderedPartition)
+    {
+        if (!TryGetTodoInsertionMarker(listBox, point, originalSource, source, out var targetItem, out _, out var after))
+        {
+            return orderedPartition.Count;
+        }
+
+        return GetTodoRawInsertIndexForPartition(orderedPartition, targetItem, after);
+    }
+
+    private static int GetTodoRawInsertIndexForPartition(IList<TodoItem> orderedPartition, TodoItem? targetItem, bool after)
+    {
+        if (targetItem is null)
+        {
+            return orderedPartition.Count;
+        }
+
+        var index = orderedPartition.IndexOf(targetItem);
+        if (index < 0)
+        {
+            return orderedPartition.Count;
+        }
+
+        return after ? index + 1 : index;
+    }
+
+    private void SetDragAutoScrollTarget(ListBox listBox)
+    {
+        _dragAutoScrollListBox = listBox;
+    }
+
+    private void StopDragAutoScroll()
+    {
+        _dragAutoScrollListBox = null;
+    }
+
+    private void UpdateDragAutoScroll()
+    {
+        // 자동 스크롤은 의도치 않은 급격한 이동을 만들 수 있으므로 사용하지 않습니다.
+        // 드래그 중 목록 이동은 마우스 휠 입력만으로 처리합니다.
     }
 
     private void UpdateInsertionPreviewPosition(ListBoxItem container, bool after)
@@ -2434,6 +3039,93 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         return false;
     }
+
+
+    private void InstallDragMouseWheelHook()
+    {
+        if (_dragMouseWheelHook != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _dragMouseWheelHookProc = DragMouseWheelHookCallback;
+        _dragMouseWheelHook = SetWindowsHookEx(WhMouseLl, _dragMouseWheelHookProc, GetModuleHandle(null), 0);
+    }
+
+    private void UninstallDragMouseWheelHook()
+    {
+        if (_dragMouseWheelHook == IntPtr.Zero)
+        {
+            _dragMouseWheelHookProc = null;
+            return;
+        }
+
+        UnhookWindowsHookEx(_dragMouseWheelHook);
+        _dragMouseWheelHook = IntPtr.Zero;
+        _dragMouseWheelHookProc = null;
+    }
+
+    private IntPtr DragMouseWheelHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && wParam == (IntPtr)WmMouseWheel && _isDragPreviewVisible && _draggedTodoItem is not null)
+        {
+            var mouseInfo = Marshal.PtrToStructure<MouseLowLevelHookStruct>(lParam);
+            var wheelDelta = unchecked((short)((mouseInfo.MouseData >> 16) & 0xFFFF));
+
+            if (wheelDelta != 0)
+            {
+                if (Dispatcher.CheckAccess())
+                {
+                    if (TryScrollDraggedTodoListByWheel(wheelDelta))
+                    {
+                        return (IntPtr)1;
+                    }
+                }
+                else
+                {
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        if (_isDragPreviewVisible && _draggedTodoItem is not null)
+                        {
+                            TryScrollDraggedTodoListByWheel(wheelDelta);
+                        }
+                    }, DispatcherPriority.Send);
+
+                    return (IntPtr)1;
+                }
+            }
+        }
+
+        return CallNextHookEx(_dragMouseWheelHook, nCode, wParam, lParam);
+    }
+
+    private const int WhMouseLl = 14;
+    private const int WmMouseWheel = 0x020A;
+
+    private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseLowLevelHookStruct
+    {
+        public NativePoint Pt;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr DwExtraInfo;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
 
     [StructLayout(LayoutKind.Sequential)]
@@ -3218,6 +3910,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
+        UninstallDragMouseWheelHook();
+
         if (!_allowRealClose && _state.Settings.HideToTrayOnClose)
         {
             e.Cancel = true;
@@ -3244,6 +3938,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (!IsAllGroupsView && SelectedGroup is null)
         {
+            foreach (var todo in AllTodos)
+            {
+                todo.ShowGroupBadge = false;
+            }
+
             SummaryText = "전체 0 · 진행 0 · 완료 0";
             IsEmptyVisible = true;
             OnPropertyChanged(nameof(HasCompletedTodos));
@@ -3255,9 +3954,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         var groupOrder = Groups.ToDictionary(g => g.Id, g => g.SortOrder);
+        var groupNameLookup = Groups.ToDictionary(g => g.Id, g => g.Name);
         var groupTodos = IsAllGroupsView
             ? AllTodos.Where(t => !t.IsArchived).ToList()
             : AllTodos.Where(t => t.GroupId == SelectedGroup!.Id && !t.IsArchived).ToList();
+
+        foreach (var todo in AllTodos)
+        {
+            todo.ShowGroupBadge = IsAllGroupsView && !todo.IsArchived;
+            todo.GroupDisplayName = groupNameLookup.TryGetValue(todo.GroupId, out var groupName) && !string.IsNullOrWhiteSpace(groupName)
+                ? groupName
+                : "알 수 없는 그룹";
+        }
 
         IEnumerable<TodoItem> ordered = _currentSortMode switch
         {
@@ -3323,6 +4031,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var active = ordered.Where(t => !t.IsDone).ToList();
         var completed = ordered.Where(t => t.IsDone).ToList();
         ApplyGroupPartitionOrder(groupId, active, completed);
+    }
+
+    private void SnapAllGroupsVisibleOrderToManual()
+    {
+        var activeByGroup = VisibleTodos
+            .Where(t => !t.IsArchived && !t.IsDone)
+            .GroupBy(t => t.GroupId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var completedByGroup = CompletedVisibleTodos
+            .Where(t => !t.IsArchived && t.IsDone)
+            .GroupBy(t => t.GroupId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var group in Groups)
+        {
+            activeByGroup.TryGetValue(group.Id, out var active);
+            completedByGroup.TryGetValue(group.Id, out var completed);
+            ApplyGroupPartitionOrder(group.Id, active, completed);
+        }
     }
 
     private void EnsureManualSortForGroup(string groupId)
@@ -3466,8 +4193,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static void FocusRenameTextBox(WpfTextBox textBox)
     {
-        textBox.Focus();
-        textBox.SelectAll();
+        void ApplyFocus()
+        {
+            textBox.Focus();
+            Keyboard.Focus(textBox);
+            textBox.SelectAll();
+        }
+
+        if (textBox.Dispatcher.CheckAccess())
+        {
+            textBox.Dispatcher.BeginInvoke((Action)ApplyFocus, DispatcherPriority.Input);
+        }
+        else
+        {
+            textBox.Dispatcher.BeginInvoke((Action)ApplyFocus, DispatcherPriority.Input);
+        }
     }
 
     private static string PriorityToText(TodoPriority priority)
@@ -3575,6 +4315,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string GetGroupName(string groupId)
         => Groups.FirstOrDefault(g => g.Id == groupId)?.Name ?? "알 수 없는 그룹";
 
+    private static TDescendant? FindDescendant<TDescendant>(DependencyObject? source) where TDescendant : DependencyObject
+    {
+        if (source is null)
+        {
+            return null;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(source);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(source, i);
+            if (child is TDescendant match)
+            {
+                return match;
+            }
+
+            var nested = FindDescendant<TDescendant>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
     private static TAncestor? GetAncestor<TAncestor>(DependencyObject? source) where TAncestor : DependencyObject
     {
         while (source is not null)
@@ -3652,6 +4418,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        const int WM_MOUSEWHEEL = 0x020A;
         const int WM_NCHITTEST = 0x0084;
         const int HTLEFT = 10;
         const int HTRIGHT = 11;
@@ -3662,6 +4429,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         const int HTBOTTOMLEFT = 16;
         const int HTBOTTOMRIGHT = 17;
 
+        if (msg == WM_MOUSEWHEEL && _isDragPreviewVisible && _draggedTodoItem is not null)
+        {
+            var wheelDelta = unchecked((short)((wParam.ToInt64() >> 16) & 0xFFFF));
+            if (TryScrollDraggedTodoListByWheel(wheelDelta))
+            {
+                handled = true;
+                return IntPtr.Zero;
+            }
+        }
+
         if (msg == WM_NCHITTEST)
         {
             handled = true;
@@ -3669,6 +4446,82 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         return IntPtr.Zero;
+    }
+
+    private bool TryScrollDraggedTodoListByWheel(int wheelDelta)
+    {
+        if (wheelDelta == 0 || _draggedTodoItem is null)
+        {
+            return false;
+        }
+
+        var listBox = ResolveWheelScrollListBoxForDrag();
+        if (listBox is null || !CanDropTodoOnListBox(_draggedTodoItem, listBox))
+        {
+            return false;
+        }
+
+        var scrollViewer = FindDescendant<ScrollViewer>(listBox);
+        if (scrollViewer is null || scrollViewer.ScrollableHeight <= 0)
+        {
+            return false;
+        }
+
+        var notches = wheelDelta / 120.0;
+        if (Math.Abs(notches) < 0.01)
+        {
+            return false;
+        }
+
+        const double pixelsPerWheelNotch = 34.0;
+        var nextOffset = Math.Clamp(scrollViewer.VerticalOffset - (notches * pixelsPerWheelNotch), 0.0, scrollViewer.ScrollableHeight);
+        if (Math.Abs(nextOffset - scrollViewer.VerticalOffset) < 0.1)
+        {
+            return false;
+        }
+
+        scrollViewer.ScrollToVerticalOffset(nextOffset);
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_draggedTodoItem is null || !listBox.IsVisible)
+            {
+                return;
+            }
+
+            UpdateDropInsertionFeedback(listBox, Mouse.GetPosition(listBox), null);
+            UpdateDragPreviewPosition();
+        }, DispatcherPriority.Background);
+
+        return true;
+    }
+
+    private ListBox? ResolveWheelScrollListBoxForDrag()
+    {
+        if (_draggedTodoItem is null)
+        {
+            return null;
+        }
+
+        if (TryGetCursorPosition(out var pt))
+        {
+            var screenPoint = new WpfPoint(pt.X, pt.Y);
+            foreach (var candidate in new[] { ActiveTodoListBox, CompletedTodoListBox })
+            {
+                if (candidate is null || !candidate.IsVisible || !CanDropTodoOnListBox(_draggedTodoItem, candidate))
+                {
+                    continue;
+                }
+
+                var local = candidate.PointFromScreen(screenPoint);
+                if (local.X >= 0 && local.X <= candidate.ActualWidth && local.Y >= 0 && local.Y <= candidate.ActualHeight)
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return GetTodoListBoxForItem(_draggedTodoItem);
     }
 
     private int HitTestNca(IntPtr lParam, int htLeft, int htRight, int htTop, int htTopLeft, int htTopRight, int htBottom, int htBottomLeft, int htBottomRight)

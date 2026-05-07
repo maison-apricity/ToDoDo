@@ -9,6 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <LangVersion>latest</LangVersion>
     <ApplicationIcon>assets\ToDoDo.ico</ApplicationIcon>
+    <UseAppHost>true</UseAppHost>
+    <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
   <!--

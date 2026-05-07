@@ -260,12 +260,189 @@
             </Setter>
         </Style>
 
+        <Style x:Key="GlassComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBd"
+                                Margin="4,2"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemBd" Property="Background" Value="#2F3F58"/>
+                                <Setter TargetName="ItemBd" Property="BorderBrush" Value="#5E7598"/>
+                                <Setter TargetName="ItemBd" Property="BorderThickness" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBd" Property="Background" Value="#27446E"/>
+                                <Setter TargetName="ItemBd" Property="BorderBrush" Value="#93A6FF"/>
+                                <Setter TargetName="ItemBd" Property="BorderThickness" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GlassComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="MinWidth" Value="120"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Background" Value="#263246"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="#42526C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="13.2"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource GlassComboBoxItemStyle}"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton"
+                                          Focusable="False"
+                                          Foreground="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ClickMode="Press"
+                                          OverridesDefaultStyle="True">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="Bd"
+                                                Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                CornerRadius="14">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="30"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter x:Name="SelectionContent"
+                                                                  Grid.Column="0"
+                                                                  TextElement.Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  Margin="{Binding Padding, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  HorizontalAlignment="Left"
+                                                                  VerticalAlignment="Center"
+                                                                  IsHitTestVisible="False"
+                                                                  Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  ContentStringFormat="{Binding SelectionBoxItemStringFormat, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                                                <TextBlock x:Name="PlaceholderContent"
+                                                           Grid.Column="0"
+                                                           Margin="{Binding Padding, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                           Text="{Binding Tag, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                           Foreground="#96A4BC"
+                                                           FontSize="13"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Left"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False"
+                                                           Visibility="Collapsed"/>
+                                                <Path Grid.Column="1"
+                                                      Width="9"
+                                                      Height="5"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Fill="{StaticResource TextSecondaryBrush}"
+                                                      Data="M 0 0 L 9 0 L 4.5 5 Z"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#30415B"/>
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="#6B81A2"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#27446E"/>
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="#93A6FF"/>
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType=ComboBox}}" Value="{x:Null}">
+                                                <Setter TargetName="SelectionContent" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="PlaceholderContent" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Fade"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="220"
+                                        Margin="0,5,0,0"
+                                        Padding="4"
+                                        Background="#F0182638"
+                                        BorderBrush="#52627E"
+                                        BorderThickness="1"
+                                        CornerRadius="14">
+                                    <ScrollViewer CanContentScroll="True"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="PART_Popup" Property="MinHeight" Value="40"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter Property="BorderBrush" Value="#90A1FF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="InfoChipStyle" TargetType="Border">
             <Setter Property="CornerRadius" Value="11"/>
-            <Setter Property="Padding" Value="9,4"/>
-            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="Margin" Value="0,0,6,4"/>
             <Setter Property="Background" Value="#213145"/>
             <Setter Property="BorderBrush" Value="#45566F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="AllGroupBadgeStyle" TargetType="Border">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="7,2"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Background" Value="#1C2B40"/>
+            <Setter Property="BorderBrush" Value="#3C4E69"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
@@ -302,6 +479,134 @@
                                 <Setter TargetName="Bd" Property="BorderBrush" Value="#93A6FF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+
+        <Style x:Key="ScrollArrowRepeatButtonStyle" TargetType="RepeatButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Background" Value="#253249"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="7"
+                                Margin="0,1">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#30415B"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A4C68"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ScrollPageRepeatButtonStyle" TargetType="RepeatButton">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ScrollBar}">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="SmallChange" Value="26"/>
+            <Setter Property="LargeChange" Value="96"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Grid x:Name="VerticalRoot"
+                              Width="{TemplateBinding Width}"
+                              Background="Transparent">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="18"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="18"/>
+                            </Grid.RowDefinitions>
+
+                            <RepeatButton Grid.Row="0"
+                                          Style="{StaticResource ScrollArrowRepeatButtonStyle}"
+                                          Command="ScrollBar.LineUpCommand"
+                                          Content="▲"
+                                          FontSize="8"/>
+
+                            <Border Grid.Row="1"
+                                    Width="8"
+                                    CornerRadius="4"
+                                    Background="#182336"
+                                    HorizontalAlignment="Center"
+                                    Margin="0,3"/>
+
+                            <Track x:Name="PART_Track"
+                                   Grid.Row="1"
+                                   Margin="0,3"
+                                   IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource ScrollPageRepeatButtonStyle}"
+                                                  Command="ScrollBar.PageUpCommand"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb MinHeight="30">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBorder"
+                                                        Width="8"
+                                                        CornerRadius="4"
+                                                        Background="#667897"
+                                                        BorderBrush="#8EA0FF"
+                                                        BorderThickness="1"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBorder" Property="Background" Value="#8092B2"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="ThumbBorder" Property="Background" Value="#95A4FF"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource ScrollPageRepeatButtonStyle}"
+                                                  Command="ScrollBar.PageDownCommand"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+
+                            <RepeatButton Grid.Row="2"
+                                          Style="{StaticResource ScrollArrowRepeatButtonStyle}"
+                                          Command="ScrollBar.LineDownCommand"
+                                          Content="▼"
+                                          FontSize="8"/>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -496,6 +801,8 @@
                                      HorizontalContentAlignment="Stretch"
                                      Foreground="{StaticResource TextPrimaryBrush}"
                                      AllowDrop="True"
+                                     ScrollViewer.CanContentScroll="False"
+                                     PreviewMouseWheel="SlowScroll_PreviewMouseWheel"
                                      DragOver="GroupListBox_DragOver"
                                      DragLeave="GroupListBox_DragLeave"
                                      Drop="GroupListBox_Drop"
@@ -689,11 +996,48 @@
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="12"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <Grid>
+                                <Border Grid.Row="0"
+                                        CornerRadius="14"
+                                        Padding="10,8"
+                                        Margin="0,0,0,10"
+                                        Background="#521C2B40"
+                                        BorderBrush="#3C4E69"
+                                        BorderThickness="1"
+                                        Visibility="{Binding IsComposerGroupPickerVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="10"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="그룹 선택"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="ComposerGroupComboBox"
+                                                  Grid.Column="2"
+                                                  ItemsSource="{Binding Groups}"
+                                                  SelectedItem="{Binding DraftTargetGroup, Mode=TwoWay}"
+                                                  TextSearch.TextPath="Name"
+                                                  Tag="그룹을 선택하세요."
+                                                  Style="{StaticResource GlassComboBoxStyle}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type models:TaskGroup}">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                                               FontWeight="SemiBold"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </Grid>
+                                </Border>
+
+                                <Grid Grid.Row="1">
                                     <TextBox x:Name="ComposerTitleTextBox"
                                              Style="{StaticResource GlassTextBoxStyle}"
                                              Text="{Binding DraftTitle, UpdateSourceTrigger=PropertyChanged}"
@@ -720,7 +1064,7 @@
                                     </TextBlock>
                                 </Grid>
 
-                                <Grid Grid.Row="2">
+                                <Grid Grid.Row="2" Margin="0,12,0,0">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
@@ -817,6 +1161,8 @@
                                              Background="Transparent"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ScrollViewer.CanContentScroll="False"
+                                             PreviewMouseWheel="SlowScroll_PreviewMouseWheel"
                                              BorderThickness="0"
                                              HorizontalAlignment="Stretch"
                                              VerticalAlignment="Stretch"
@@ -902,6 +1248,14 @@
                                                 </Grid.ColumnDefinitions>
 
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <Border Style="{StaticResource AllGroupBadgeStyle}"
+                                                            Visibility="{Binding ShowGroupBadge, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding GroupDisplayName}"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold"/>
+                                                    </Border>
+
                                                     <TextBlock Text="{Binding Text}"
                                                                ToolTip="{Binding Text}"
                                                                Foreground="{StaticResource TextPrimaryBrush}"
@@ -911,7 +1265,7 @@
                                                                TextTrimming="CharacterEllipsis"
                                                                LineStackingStrategy="BlockLineHeight"
                                                                LineHeight="20"
-                                                               Height="40"
+                                                               MaxHeight="40"
                                                                ClipToBounds="True"
                                                                Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                         <TextBlock.Style>
@@ -951,6 +1305,7 @@
                                                                      Style="{StaticResource GlassTextBoxStyle}"
                                                                      FontSize="15"
                                                                      Loaded="InlineEditTextBox_Loaded"
+                                                                     IsVisibleChanged="InlineEditTextBox_IsVisibleChanged"
                                                                      KeyDown="InlineEditTextBox_KeyDown"/>
                                                             <Grid Grid.Row="2" VerticalAlignment="Center">
                                                                 <Grid.ColumnDefinitions>
@@ -997,7 +1352,7 @@
                                                         </Grid>
                                                     </Border>
 
-                                                    <WrapPanel Margin="0,6,0,0"
+                                                    <WrapPanel Margin="0,9,0,0"
                                                               VerticalAlignment="Center"
                                                               Visibility="{Binding ShowMeta, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Border Style="{StaticResource InfoChipStyle}">
@@ -1010,7 +1365,7 @@
                                                             <TextBlock Text="{Binding RepeatText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
                                                         </Border>
                                                     </WrapPanel>
-                                                    <WrapPanel Margin="0,6,0,0"
+                                                    <WrapPanel Margin="0,9,0,0"
                                                               VerticalAlignment="Center"
                                                               Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Border Style="{StaticResource InfoChipStyle}">
@@ -1121,6 +1476,8 @@
                                                  Foreground="{StaticResource TextPrimaryBrush}"
                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 ScrollViewer.CanContentScroll="False"
+                                                 PreviewMouseWheel="SlowScroll_PreviewMouseWheel"
                                                  DragOver="TodoListBox_DragOver"
                                                  Drop="TodoListBox_Drop"
                                                  AllowDrop="True">
@@ -1201,6 +1558,14 @@
                                                 </Grid.ColumnDefinitions>
 
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <Border Style="{StaticResource AllGroupBadgeStyle}"
+                                                            Visibility="{Binding ShowGroupBadge, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding GroupDisplayName}"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="11"
+                                                                   FontWeight="Bold"/>
+                                                    </Border>
+
                                                     <TextBlock Text="{Binding Text}"
                                                                ToolTip="{Binding Text}"
                                                                Foreground="{StaticResource TextPrimaryBrush}"
@@ -1210,7 +1575,7 @@
                                                                TextTrimming="CharacterEllipsis"
                                                                LineStackingStrategy="BlockLineHeight"
                                                                LineHeight="20"
-                                                               Height="40"
+                                                               MaxHeight="40"
                                                                ClipToBounds="True"
                                                                Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                         <TextBlock.Style>
@@ -1250,6 +1615,7 @@
                                                                      Style="{StaticResource GlassTextBoxStyle}"
                                                                      FontSize="15"
                                                                      Loaded="InlineEditTextBox_Loaded"
+                                                                     IsVisibleChanged="InlineEditTextBox_IsVisibleChanged"
                                                                      KeyDown="InlineEditTextBox_KeyDown"/>
                                                             <Grid Grid.Row="2" VerticalAlignment="Center">
                                                                 <Grid.ColumnDefinitions>
@@ -1296,7 +1662,7 @@
                                                         </Grid>
                                                     </Border>
 
-                                                    <WrapPanel Margin="0,6,0,0"
+                                                    <WrapPanel Margin="0,9,0,0"
                                                               VerticalAlignment="Center"
                                                               Visibility="{Binding ShowMeta, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Border Style="{StaticResource InfoChipStyle}">
@@ -1309,7 +1675,7 @@
                                                             <TextBlock Text="{Binding RepeatText}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12.5" FontWeight="SemiBold"/>
                                                         </Border>
                                                     </WrapPanel>
-                                                    <WrapPanel Margin="0,6,0,0"
+                                                    <WrapPanel Margin="0,9,0,0"
                                                               VerticalAlignment="Center"
                                                               Visibility="{Binding IsDone, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Border Style="{StaticResource InfoChipStyle}">
@@ -1510,7 +1876,7 @@
                     BorderBrush="#556983"
                     BorderThickness="1"
                     Visibility="Collapsed">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="620">
+                <ScrollViewer x:Name="SettingsScrollViewer" VerticalScrollBarVisibility="Auto" MaxHeight="620" PreviewMouseWheel="SlowScroll_PreviewMouseWheel">
                     <StackPanel>
                         <TextBlock Text="설정"
                                    Foreground="{StaticResource TextPrimaryBrush}"

@@ -1,3 +1,5 @@
+﻿using System.Text.Json.Serialization;
+
 namespace ToDoDo.Models;
 
 public sealed class TodoItem : ObservableObject
@@ -17,6 +19,8 @@ public sealed class TodoItem : ObservableObject
     private DateTime _createdAt = DateTime.Now;
     private bool _isCompletingFeedback;
     private string _archivedGroupName = string.Empty;
+    private string _groupDisplayName = string.Empty;
+    private bool _showGroupBadge;
 
     private string _editText = string.Empty;
     private TodoPriority _editPriority = TodoPriority.Normal;
@@ -152,6 +156,20 @@ public sealed class TodoItem : ObservableObject
                 OnPropertyChanged(nameof(ArchivedGroupCaption));
             }
         }
+    }
+
+    [JsonIgnore]
+    public string GroupDisplayName
+    {
+        get => _groupDisplayName;
+        set => SetProperty(ref _groupDisplayName, value ?? string.Empty);
+    }
+
+    [JsonIgnore]
+    public bool ShowGroupBadge
+    {
+        get => _showGroupBadge;
+        set => SetProperty(ref _showGroupBadge, value);
     }
 
     public string EditText
